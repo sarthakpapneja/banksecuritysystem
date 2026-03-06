@@ -305,15 +305,14 @@
                 <div class="account-cards">${active.map(a => `
                     <div class="table-card" style="cursor:pointer" onclick="showTransactions(${a.account_id})">
                         <div style="padding:20px">
-                            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
-                                <div>
-                                    <div style="font-size:0.72rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em">${a.account_type} Account</div>
-                                    <div style="font-size:0.85rem;color:var(--text-secondary);margin-top:2px">${a.customer_name}</div>
-                                </div>
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                                <div style="font-size:0.72rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em">${a.account_type} Account</div>
                                 <span class="badge badge-green">Active</span>
                             </div>
-                            <div style="font-size:1.4rem;font-weight:700;color:var(--text-primary)">${formatCurrency(a.balance)}</div>
-                            <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px">Account #${a.account_id} · Click to view transactions</div>
+                            <div style="font-size:1.05rem;font-weight:700;color:var(--primary-700);font-variant-numeric:tabular-nums;letter-spacing:0.02em;margin-bottom:12px">A/C No. ${String(a.account_id).padStart(6,'0')}</div>
+                            <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:2px">${a.customer_name}</div>
+                            <div style="font-size:1.5rem;font-weight:700;color:var(--text-primary);margin-top:4px">${formatCurrency(a.balance)}</div>
+                            <div style="font-size:0.72rem;color:var(--text-muted);margin-top:8px;border-top:1px solid var(--border-light);padding-top:8px">Click to view transactions →</div>
                         </div>
                     </div>
                 `).join('')}</div>
