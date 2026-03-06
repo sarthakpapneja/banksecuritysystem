@@ -365,6 +365,20 @@ def api_create_user():
         return jsonify({"error": "Username already exists"}), 400
 
     uid = db_manager.create_user(data["username"], hash_password(data["password"]), data["role"], data["full_name"])
+
+    # Auto-create a savings account for new customers
+    if data["role"] == "customer":
+        acc_id = db_manager.create_account(
+            customer_name=data["full_name"],
+            email=f"{data['username']}@bank.com",
+            phone="0000000000",
+            balance=0.0,
+            account_type="savings",
+            user_id=uid
+        )
+        db_manager.add_system_log("ACCOUNT_CREATED", user["user_id"],
+            f"Auto-created savings account #{acc_id} for new customer '{data['username']}' (web)")
+
     db_manager.add_system_log("USER_CREATED", user["user_id"], f"Created {data['role']}: {data['username']} (web)")
     return jsonify({"success": True, "user_id": uid})
 
