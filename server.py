@@ -218,6 +218,7 @@ def api_withdraw():
     if amount >= 5000:
         db_manager.create_request(account_id, "large_withdrawal", amount, f"Requested by {user['username']} (web)")
         db_manager.add_audit_log("WITHDRAWAL_REQUEST", user["username"], account_id, f"₹{amount:,.2f} — pending (web)")
+        db_manager.create_security_alert(user["user_id"], f"A large withdrawal of ₹{amount:,.2f} has been requested and requires accountant approval.", "warning")
         return jsonify({"success": True, "pending": True, "message": "Large withdrawal requires accountant approval. Request submitted."})
 
     new_balance = account["balance"] - amount
@@ -263,6 +264,7 @@ def api_transfer():
     if amount >= 5000:
         db_manager.create_request(src_id, "large_transfer", amount, f"Transfer to #{dst_id} by {user['username']} (web)")
         db_manager.add_audit_log("TRANSFER_REQUEST", user["username"], src_id, f"₹{amount:,.2f} to #{dst_id} — pending (web)")
+        db_manager.create_security_alert(user["user_id"], f"A large transfer of ₹{amount:,.2f} to account #{dst_id} has been requested and is pending approval.", "warning")
         return jsonify({"success": True, "pending": True, "message": "Large transfer requires approval. Request submitted."})
 
     db_manager.update_balance(src_id, src["balance"] - amount)
@@ -278,6 +280,48 @@ def api_transfer():
     return jsonify({"success": True, "new_balance": src["balance"] - amount})
 
 
+@app.route("/api/loan/apply", methods=["POST"])
+@role_required("customer")
+def api_loan_apply():
+    data = request.json
+    account_id = data.get("account_id")
+    amount = data.get("amount", 0)
+    term_months = data.get("term_months", 12)  # Default 12 months if not provided
+
+    account = db_manager.get_account_by_id(account_id)
+    if not account:
+        return jsonify({"error": "Account not found"}), 404
+
+    user = session["user"]
+    if account["user_id"] != user["user_id"]:
+        return jsonify({"error": "Access denied"}), 403
+
+    if amount <= 0:
+        return jsonify({"error": "Loan amount must be positive"}), 400
+
+    db_manager.create_request(account_id, "loan", amount, f"Loan application by {user['username']} (web) | Term: {term_months} months")
+    db_manager.add_audit_log("LOAN_REQUEST", user["username"], account_id, f"₹{amount:,.2f} — pending (web)")
+
+    return jsonify({"success": True, "message": "Loan application submitted successfully. Pending accountant approval."})
+
+
+# ─────────────────────────────────────────────
+# SECURITY ALERTS API
+# ─────────────────────────────────────────────
+
+@app.route("/api/alerts", methods=["GET"])
+@login_required
+def api_get_alerts():
+    return jsonify(db_manager.get_unread_alerts(session["user"]["user_id"]))
+
+
+@app.route("/api/alerts/<int:alert_id>/read", methods=["POST"])
+@login_required
+def api_read_alert(alert_id):
+    db_manager.mark_alert_read(session["user"]["user_id"], alert_id)
+    return jsonify({"success": True})
+
+
 # ─────────────────────────────────────────────
 # ACCOUNTANT API
 # ─────────────────────────────────────────────
@@ -285,7 +329,18 @@ def api_transfer():
 @app.route("/api/requests")
 @role_required("accountant", "manager")
 def api_requests():
-    return jsonify(db_manager.get_pending_requests())
+    user = session["user"]
+    if user["role"] == "manager":
+        # Managers see all non-loan requests pending manager approval
+        all_reqs = db_manager.get_pending_requests()
+        # The new get_pending_requests and get_pending_manager_requests already exclude loans.
+        # But wait, a manager is supposed to approve all accountants' approved requests? 
+        # For non-loans, currently only accountants approve them completely (1 step).
+        # Ah, the original code had:
+        return jsonify(db_manager.get_pending_requests())
+    else:
+        # Accountants see all requests pending accountant approval, excluding loans
+        return jsonify(db_manager.get_pending_requests())
 
 
 @app.route("/api/requests/all")
@@ -312,8 +367,9 @@ def api_process_request(request_id):
         return jsonify({"error": "Request not found or already processed"}), 404
 
     if action == "approve":
-        db_manager.update_request_status(request_id, "approved", user["username"])
         account = db_manager.get_account_by_id(target["account_id"])
+
+        db_manager.update_request_status(request_id, "approved", user["username"])
 
         if account:
             if target["request_type"] in ("large_withdrawal", "large_transfer"):
@@ -327,18 +383,146 @@ def api_process_request(request_id):
                     return jsonify({"error": "Insufficient balance to execute"}), 400
             elif target["request_type"] == "account_close":
                 db_manager.close_account(target["account_id"])
+            elif target["request_type"] == "credit_card":
+                # Create credit card with 15% APR as default
+                c_id = db_manager.create_credit_card(target["account_id"], target["amount"], 15.0)
+                db_manager.create_security_alert(account["user_id"], f"Your credit card application for a limit of ₹{target['amount']:,.2f} has been approved!", "success")
 
         db_manager.add_audit_log("REQUEST_APPROVED", user["username"], target["account_id"],
-                                 f"Req #{request_id} approved (web)")
+                                 f"Req #{request_id} ({target['request_type']}) approved (web)")
         return jsonify({"success": True, "message": f"Request #{request_id} approved"})
 
     elif action == "reject":
         db_manager.update_request_status(request_id, "rejected", user["username"])
-        db_manager.add_audit_log("REQUEST_REJECTED", user["username"], target["account_id"],
-                                 f"Req #{request_id} rejected (web)")
+        db_manager.add_audit_log("REQUEST_REJECTED", user["username"], target["account_id"], f"Req #{request_id} rejected (web)")
         return jsonify({"success": True, "message": f"Request #{request_id} rejected"})
 
     return jsonify({"error": "Invalid action"}), 400
+
+# ─────────────────────────────────────────────
+# LOAN SPECIFIC API
+# ─────────────────────────────────────────────
+
+@app.route("/api/loans")
+@role_required("customer", "accountant", "manager")
+def api_loans():
+    user = session["user"]
+    if user["role"] == "customer":
+        return jsonify(db_manager.get_customer_loans(user["user_id"]))
+    elif user["role"] == "accountant":
+        return jsonify(db_manager.get_pending_accountant_loans())
+    elif user["role"] == "manager":
+        return jsonify(db_manager.get_pending_manager_loans())
+    return jsonify([])
+
+@app.route("/api/loans/<int:request_id>/process", methods=["POST"])
+@role_required("accountant", "manager")
+def api_loan_process(request_id):
+    data = request.json
+    action = data.get("action")
+    user = session["user"]
+
+    if user["role"] == "accountant":
+        requests_list = db_manager.get_pending_accountant_loans()
+    elif user["role"] == "manager":
+        requests_list = db_manager.get_pending_manager_loans()
+    else:
+        requests_list = []
+
+    target = None
+    for r in requests_list:
+        if r["request_id"] == request_id:
+            target = r
+            break
+
+    if not target:
+        return jsonify({"error": "Loan request not found or already processed"}), 404
+
+    if action == "approve":
+        account = db_manager.get_account_by_id(target["account_id"])
+        if not account:
+            return jsonify({"error": "Account not found"}), 404
+
+        if user["role"] == "accountant" and target["status"] == "pending":
+            db_manager.update_request_status(request_id, "pending_manager", user["username"])
+            db_manager.add_audit_log("LOAN_APPROVED_ACC", user["username"], target["account_id"],
+                                     f"Loan Req #{request_id} approved by accountant")
+            return jsonify({"success": True, "message": f"Loan #{request_id} forwarded to manager"})
+
+        elif user["role"] == "manager" and target["status"] == "pending_manager":
+            db_manager.update_request_status(request_id, "approved", user["username"])
+            
+            term_months = 12
+            if "Term:" in target["details"]:
+                try:
+                    term_months = int(target["details"].split("Term: ")[1].split()[0])
+                except:
+                    pass
+
+            principal = target["amount"]
+            interest_rate = 8.0
+            total_interest = principal * (interest_rate / 100) * (term_months / 12)
+            total_cost = principal + total_interest
+            emi = total_cost / term_months
+
+            db_manager.create_active_loan(target["account_id"], principal, interest_rate, term_months, total_cost, emi)
+
+            new_bal = account["balance"] + principal
+            db_manager.update_balance(target["account_id"], new_bal)
+            db_manager.add_transaction(target["account_id"], "deposit", principal,
+                                       f"Loan Approved (Req #{request_id}) by {user['username']}")
+            db_manager.add_audit_log("LOAN_APPROVED_MGR", user["username"], target["account_id"],
+                                     f"Loan Req #{request_id} finally approved")
+            
+            db_manager.create_security_alert(account["user_id"], f"Your loan application for ₹{principal:,.2f} has been fully approved and credited to your account.", "success")
+            
+            return jsonify({"success": True, "message": f"Loan #{request_id} fully approved and credited"})
+
+    elif action == "reject":
+        db_manager.update_request_status(request_id, "rejected", user["username"])
+        db_manager.add_audit_log("LOAN_REJECTED", user["username"], target["account_id"], f"Loan Req #{request_id} rejected")
+        return jsonify({"success": True, "message": f"Loan #{request_id} rejected"})
+
+    return jsonify({"error": "Invalid action"}), 400
+
+
+@app.route("/api/active_loans", methods=["GET"])
+@role_required("customer")
+def api_active_loans():
+    user = session["user"]
+    accounts = db_manager.get_accounts_by_user(user["user_id"])
+    all_active_loans = []
+    for acc in accounts:
+        loans = db_manager.get_active_loans_by_account(acc["account_id"])
+        all_active_loans.extend(loans)
+    return jsonify(all_active_loans)
+
+
+@app.route("/api/loan/pay", methods=["POST"])
+@role_required("customer")
+def api_loan_pay():
+    data = request.json
+    loan_id = data.get("loan_id")
+    
+    loan = db_manager.get_active_loan_by_id(loan_id)
+    if not loan or loan["remaining_balance"] <= 0:
+        return jsonify({"error": "Loan not found or already paid off"}), 404
+
+    account = db_manager.get_account_by_id(loan["account_id"])
+    if account["user_id"] != session["user"]["user_id"]:
+        return jsonify({"error": "Access denied"}), 403
+
+    emi_amount = min(loan["next_emi_amount"], loan["remaining_balance"])
+
+    if account["balance"] < emi_amount:
+        return jsonify({"error": f"Insufficient balance in account #{account['account_id']} to pay EMI of ₹{emi_amount:,.2f}"}), 400
+
+    # Deduct EMI and reduce loan balance
+    db_manager.update_balance(account["account_id"], account["balance"] - emi_amount)
+    db_manager.add_transaction(account["account_id"], "withdrawal", emi_amount, f"EMI Payment for Loan #{loan_id}")
+    db_manager.update_loan_balance(loan_id, loan["remaining_balance"] - emi_amount)
+
+    return jsonify({"success": True, "message": f"Successfully paid EMI of ₹{emi_amount:,.2f}"})
 
 
 @app.route("/api/accounts/create", methods=["POST"])
@@ -437,6 +621,31 @@ def api_toggle_user(user_id):
     return jsonify({"success": True, "is_active": new_status})
 
 
+@app.route("/api/users/<int:user_id>/unlock", methods=["POST"])
+@role_required("manager")
+def api_unlock_user(user_id):
+    user = session["user"]
+    if user_id == user["user_id"]:
+        return jsonify({"error": "Cannot unlock your own account here"}), 400
+
+    users = db_manager.get_all_users()
+    target = None
+    for u in users:
+        if u["user_id"] == user_id:
+            target = u
+            break
+            
+    if not target:
+        return jsonify({"error": "User not found"}), 404
+        
+    if not target["is_locked"]:
+        return jsonify({"message": "User is already unlocked"}), 200
+
+    db_manager.unlock_user(user_id)
+    db_manager.add_system_log("USER_UNLOCKED", user["user_id"], f"Unlocked {target['username']} (web)")
+    return jsonify({"success": True, "message": f"Successfully unlocked {target['username']}"})
+
+
 @app.route("/api/users/<int:user_id>", methods=["DELETE"])
 @role_required("manager")
 def api_delete_user(user_id):
@@ -498,6 +707,7 @@ def api_get_profile():
         "user_id": u["user_id"], "username": u["username"], "full_name": u["full_name"],
         "role": u["role"], "email": u.get("email", ""), "phone": u.get("phone", ""),
         "address": u.get("address", ""), "created_at": u["created_at"],
+        "qr_code_b64": u.get("qr_code_b64", ""), "avatar_b64": u.get("avatar_b64", "")
     })
 
 
@@ -512,6 +722,31 @@ def api_update_profile():
     )
     db_manager.add_system_log("PROFILE_UPDATED", user["user_id"], f"Profile updated by {user['username']}")
     return jsonify({"success": True})
+
+
+@app.route("/api/profile/qr", methods=["POST"])
+@login_required
+def api_upload_qr():
+    data = request.json
+    qr_b64 = data.get("qr_code_b64", "")
+    user = session["user"]
+    
+    # We store the raw base64 string provided by the frontend
+    db_manager.update_user_qr(user["user_id"], qr_b64)
+    db_manager.add_system_log("QR_UPDATED", user["user_id"], f"QR Code updated by {user['username']}")
+    return jsonify({"success": True, "message": "QR Code updated successfully"})
+
+
+@app.route("/api/account/<int:account_id>/qr", methods=["GET"])
+@login_required
+def api_get_account_qr(account_id):
+    # This fetches the QR code of the user who owns the specified account.
+    # Used for verifying payee identity before a transfer.
+    qr_b64 = db_manager.get_user_qr_by_account_id(account_id)
+    if not qr_b64:
+        return jsonify({"error": "No QR code associated with this account."}), 404
+        
+    return jsonify({"success": True, "qr_code_b64": qr_b64})
 
 
 @app.route("/api/change-password", methods=["POST"])
@@ -532,19 +767,6 @@ def api_change_password():
 
     db_manager.update_user_password(user["user_id"], hash_password(new_pass))
     db_manager.add_system_log("PASSWORD_CHANGED", user["user_id"], f"Password changed by {user['username']}")
-    return jsonify({"success": True})
-
-
-# ─────────────────────────────────────────────
-# UNLOCK USER API
-# ─────────────────────────────────────────────
-
-@app.route("/api/users/<int:user_id>/unlock", methods=["POST"])
-@role_required("manager", "accountant")
-def api_unlock_user(user_id):
-    user = session["user"]
-    db_manager.unlock_user(user_id)
-    db_manager.add_system_log("ACCOUNT_UNLOCKED", user["user_id"], f"Unlocked user #{user_id}")
     return jsonify({"success": True})
 
 
@@ -576,6 +798,7 @@ def api_user_details(user_id):
             "is_active": user["is_active"],
             "is_locked": user.get("is_locked", False),
             "created_at": user.get("created_at", ""),
+            "avatar_b64": user.get("avatar_b64", ""),
         },
         "accounts": accounts,
         "transactions": all_txns,
@@ -786,6 +1009,69 @@ def api_transaction_receipt(txn_id):
     </div></body></html>"""
 
     return html, 200, {"Content-Type": "text/html"}
+    return html, 200, {"Content-Type": "text/html"}
+
+# ─────────────────────────────────────────────
+# TICKETING API
+# ─────────────────────────────────────────────
+
+@app.route("/api/tickets", methods=["GET", "POST"])
+@login_required
+def api_tickets():
+    user = session["user"]
+    if request.method == "POST":
+        data = request.json
+        subject = data.get("subject", "").strip()
+        if not subject:
+            return jsonify({"error": "Subject is required"}), 400
+        t_id = db_manager.create_ticket(user["user_id"], subject)
+        db_manager.add_system_log("TICKET_CREATED", user["user_id"], f"Ticket #{t_id} created: {subject}")
+        return jsonify({"success": True, "ticket_id": t_id})
+    else:
+        if user["role"] in ("manager", "accountant"):
+            tickets = db_manager.get_all_tickets()
+        else:
+            tickets = db_manager.get_tickets_by_user(user["user_id"])
+        
+        # Hydrate user info for managers
+        if user["role"] in ("manager", "accountant"):
+            for t in tickets:
+                u = db_manager.get_user_by_id(t["user_id"])
+                t["customer_name"] = u["full_name"] if u else "Unknown"
+        return jsonify(tickets)
+
+@app.route("/api/tickets/<int:ticket_id>/messages", methods=["GET", "POST"])
+@login_required
+def api_ticket_messages(ticket_id):
+    user = session["user"]
+    
+    # Just basic verification - manager/accountant can see all, customer can see own
+    if user["role"] == "customer":
+        tickets = db_manager.get_tickets_by_user(user["user_id"])
+        if not any(t["ticket_id"] == ticket_id for t in tickets):
+            return jsonify({"error": "Access denied"}), 403
+
+    if request.method == "POST":
+        data = request.json
+        message = data.get("message", "").strip()
+        if not message:
+            return jsonify({"error": "Message is required"}), 400
+        m_id = db_manager.add_ticket_message(ticket_id, user["user_id"], message)
+        return jsonify({"success": True, "message_id": m_id})
+    else:
+        msgs = db_manager.get_ticket_messages(ticket_id)
+        # Hydrate names
+        for m in msgs:
+            u = db_manager.get_user_by_id(m["sender_user_id"])
+            m["sender_name"] = u["full_name"] if u else "Unknown"
+            m["sender_role"] = u["role"] if u else "customer"
+        return jsonify(msgs)
+
+@app.route("/api/tickets/<int:ticket_id>/close", methods=["POST"])
+@role_required("manager", "accountant")
+def api_ticket_close(ticket_id):
+    db_manager.update_ticket_status(ticket_id, "closed")
+    return jsonify({"success": True})
 
 
 # ─────────────────────────────────────────────
@@ -992,12 +1278,93 @@ def api_account_qr(account_id):
 
 # ─────────────────────────────────────────────
 # MAIN
+# CREDIT CARDS API
 # ─────────────────────────────────────────────
+
+@app.route("/api/credit_cards", methods=["GET"])
+@login_required
+def api_credit_cards():
+    user = session["user"]
+    if user["role"] == "customer":
+        accounts = db_manager.get_accounts_by_user(user["user_id"])
+        cards = []
+        for acc in accounts:
+            cards.extend(db_manager.get_credit_cards_by_account(acc["account_id"]))
+        return jsonify(cards)
+    else:
+        # Staff (accountant/manager) can see all cards
+        return jsonify(db_manager.get_all_credit_cards())
+
+@app.route("/api/credit_cards/apply", methods=["POST"])
+@role_required("customer")
+def api_credit_card_apply():
+    user = session["user"]
+    data = request.json
+    account_id = data.get("account_id")
+    limit_requested = data.get("limit_requested", 0)
+    
+    account = db_manager.get_account_by_id(account_id)
+    if not account or account["user_id"] != user["user_id"]:
+        return jsonify({"error": "Invalid account"}), 400
+        
+    db_manager.create_request(account_id, "credit_card", limit_requested, f"Requested Limit: ₹{limit_requested:,.2f}")
+    return jsonify({"success": True, "message": "Credit card application submitted to management."})
+
+@app.route("/api/credit_cards/pay", methods=["POST"])
+@role_required("customer")
+def api_credit_card_pay():
+    user = session["user"]
+    data = request.json
+    src_account_id = data.get("account_id")
+    card_id = data.get("card_id")
+    amount = data.get("amount", 0)
+
+    account = db_manager.get_account_by_id(src_account_id)
+    if not account or account["user_id"] != user["user_id"] or account["balance"] < amount:
+        return jsonify({"error": "Insufficient balance or invalid account"}), 400
+
+    if amount <= 0:
+        return jsonify({"error": "Amount must be positive"}), 400
+
+    # Subtract from checking
+    new_bal = account["balance"] - amount
+    db_manager.update_balance(src_account_id, new_bal)
+    db_manager.add_transaction(src_account_id, "withdrawal", amount, f"Credit Card Bill Payment (Card #{card_id})")
+
+    # Fetch card and deduct balance
+    c = db_manager.get_credit_card_by_id(card_id)
+    if not c:
+        return jsonify({"error": "Card not found"}), 404
+        
+    new_card_bal = max(0, c["current_balance"] - amount)
+    db_manager.update_credit_card_balance(card_id, new_card_bal)
+    
+    return jsonify({"success": True, "new_card_balance": new_card_bal, "new_account_balance": new_bal})
+
+# ─────────────────────────────────────────────
+# AVATAR API
+# ─────────────────────────────────────────────
+
+@app.route("/api/profile/avatar", methods=["POST"])
+@login_required
+def api_profile_avatar():
+    try:
+        data = request.json
+        b64 = data.get("avatar_b64")
+        if not b64:
+            return jsonify({"error": "Image data missing"}), 400
+        
+        user_id = session["user"]["user_id"]
+        db_manager.update_user_avatar(user_id, b64)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == "__main__":
     db_manager.init_all_databases()
     print("\n  Apex Trust Bank — Web Server")
     print("  http://localhost:5005\n")
-    app.run(debug=True, port=5005)
+    app.run(debug=True, host="0.0.0.0", port=5005, use_reloader=False)
 
 

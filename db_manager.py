@@ -61,6 +61,7 @@ def init_customers_db():
             FOREIGN KEY (account_id) REFERENCES accounts(account_id)
         );
 
+        -- Expanded Loans Table (Remote)
         CREATE TABLE IF NOT EXISTS loans (
             loan_id           INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id           INTEGER NOT NULL,
@@ -79,6 +80,7 @@ def init_customers_db():
             FOREIGN KEY (account_id) REFERENCES accounts(account_id)
         );
 
+        -- Beneficiaries Table (Remote Structure)
         CREATE TABLE IF NOT EXISTS beneficiaries (
             ben_id     INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id    INTEGER NOT NULL,
@@ -86,6 +88,59 @@ def init_customers_db():
             account_id INTEGER NOT NULL,
             nickname   TEXT    DEFAULT '',
             created_at TEXT    DEFAULT (datetime('now','localtime'))
+        );
+
+        CREATE TABLE IF NOT EXISTS security_alerts (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER NOT NULL,
+            message    TEXT    NOT NULL,
+            type       TEXT    NOT NULL,
+            is_read    INTEGER DEFAULT 0,
+            created_at TEXT    DEFAULT (datetime('now','localtime'))
+        );
+
+        -- Active Loans (My specific implementation)
+        CREATE TABLE IF NOT EXISTS active_loans (
+            loan_id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id               INTEGER NOT NULL,
+            principal                REAL    NOT NULL,
+            interest_rate            REAL    NOT NULL,
+            term_months              INTEGER NOT NULL,
+            total_cost_with_interest REAL    NOT NULL,
+            remaining_balance        REAL    NOT NULL,
+            next_emi_amount          REAL    NOT NULL,
+            created_at               TEXT    DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (account_id) REFERENCES accounts(account_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS support_tickets (
+            ticket_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER NOT NULL,
+            subject    TEXT    NOT NULL,
+            status     TEXT    DEFAULT 'open',
+            created_at TEXT    DEFAULT (datetime('now','localtime')),
+            updated_at TEXT    DEFAULT (datetime('now','localtime'))
+        );
+
+        CREATE TABLE IF NOT EXISTS ticket_messages (
+            message_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticket_id      INTEGER NOT NULL,
+            sender_user_id INTEGER NOT NULL,
+            message        TEXT    NOT NULL,
+            created_at     TEXT    DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY(ticket_id) REFERENCES support_tickets(ticket_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS credit_cards (
+            card_id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL,
+            card_number     TEXT    NOT NULL UNIQUE,
+            credit_limit    REAL    NOT NULL,
+            current_balance REAL    DEFAULT 0,
+            apr             REAL    NOT NULL,
+            due_date        TEXT,
+            status          TEXT    DEFAULT 'active',
+            FOREIGN KEY(account_id) REFERENCES accounts(account_id)
         );
     """)
     conn.commit()
@@ -135,6 +190,8 @@ def init_managers_db():
             email           TEXT    DEFAULT '',
             phone           TEXT    DEFAULT '',
             address         TEXT    DEFAULT '',
+            qr_code_b64     TEXT    DEFAULT '',
+            avatar_b64      TEXT    DEFAULT '',
             created_at      TEXT    DEFAULT (datetime('now','localtime')),
             is_active       INTEGER DEFAULT 1,
             failed_attempts INTEGER DEFAULT 0,
@@ -166,6 +223,18 @@ def init_managers_db():
             created_at TEXT    DEFAULT (datetime('now','localtime'))
         );
     """)
+    
+    # Safely alter users table to add missing columns if they don't exist
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN avatar_b64 TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass # Column might already exist
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN qr_code_b64 TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass # Column might already exist
+
+
     conn.commit()
     conn.close()
 
@@ -192,7 +261,7 @@ def create_user(username: str, password_hash: str, role: str, full_name: str) ->
     conn.commit()
     user_id = cursor.lastrowid
     conn.close()
-    return user_id
+    return user_id if user_id is not None else 0
 
 
 def get_user_by_username(username: str) -> Optional[dict]:
@@ -244,13 +313,51 @@ def update_user_password(user_id: int, new_hash: str):
 
 
 def update_user_profile(user_id: int, email: str, phone: str, address: str):
-    """Update a user's profile fields."""
+    """Update user's profile information."""
     conn = get_connection("managers")
     cursor = conn.cursor()
-    cursor.execute("UPDATE users SET email = ?, phone = ?, address = ? WHERE user_id = ?",
-                   (email, phone, address, user_id))
+    cursor.execute(
+        "UPDATE users SET email = ?, phone = ?, address = ? WHERE user_id = ?",
+        (email, phone, address, user_id)
+    )
     conn.commit()
     conn.close()
+
+
+def update_user_qr(user_id: int, qr_b64: str):
+    """Update a user's base64 QR code image."""
+    conn = get_connection("managers")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET qr_code_b64 = ? WHERE user_id = ?", (qr_b64, user_id))
+    conn.commit()
+    conn.close()
+
+
+def get_user_qr_by_account_id(account_id: int) -> str:
+    """Fetch the QR code of the user who owns the given account ID."""
+    # First get the user_id from the customers db
+    c_conn = get_connection("customers")
+    c_cursor = c_conn.cursor()
+    c_cursor.execute("SELECT user_id FROM accounts WHERE account_id = ?", (account_id,))
+    row = c_cursor.fetchone()
+    c_conn.close()
+    
+    if not row:
+        return ""
+        
+    user_id = row["user_id"]
+    
+    # Then get the qr_code_b64 from the managers db
+    m_conn = get_connection("managers")
+    m_cursor = m_conn.cursor()
+    m_cursor.execute("SELECT qr_code_b64 FROM users WHERE user_id = ?", (user_id,))
+    u_row = m_cursor.fetchone()
+    m_conn.close()
+    
+    if not u_row or not u_row["qr_code_b64"]:
+        return ""
+        
+    return u_row["qr_code_b64"]
 
 
 def increment_failed_attempts(user_id: int) -> int:
@@ -324,7 +431,7 @@ def create_account(customer_name: str, email: str, phone: str, balance: float,
     conn.commit()
     acc_id = cursor.lastrowid
     conn.close()
-    return acc_id
+    return acc_id if acc_id is not None else 0
 
 
 def get_accounts_by_user(user_id: int) -> list:
@@ -381,7 +488,7 @@ def close_account(account_id: int):
 
 def add_transaction(account_id: int, txn_type: str, amount: float,
                     description: str = "", status: str = "completed",
-                    target_account_id: int = None) -> int:
+                    target_account_id: Optional[int] = None) -> int:
     """Record a transaction."""
     conn = get_connection("customers")
     cursor = conn.cursor()
@@ -393,7 +500,7 @@ def add_transaction(account_id: int, txn_type: str, amount: float,
     conn.commit()
     txn_id = cursor.lastrowid
     conn.close()
-    return txn_id
+    return txn_id if txn_id is not None else 0
 
 
 def get_transactions_by_account(account_id: int, limit: int = 20) -> list:
@@ -420,6 +527,130 @@ def get_all_transactions(limit: int = 50) -> list:
 
 
 # ─────────────────────────────────────────────
+# BENEFICIARIES Operations (customers.db)
+# ─────────────────────────────────────────────
+
+def create_beneficiary(user_id: int, account_id: int, name: str) -> int:
+    """Add a new saved beneficiary."""
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO beneficiaries (user_id, account_id, name) VALUES (?, ?, ?)",
+        (user_id, account_id, name)
+    )
+    conn.commit()
+    b_id = cursor.lastrowid
+    conn.close()
+    return b_id if b_id is not None else 0
+
+
+def get_beneficiaries(user_id: int) -> list:
+    """Get all beneficiaries for a specific user."""
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM beneficiaries WHERE user_id = ? ORDER BY name ASC", (user_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def delete_beneficiary(user_id: int, beneficiary_id: int):
+    """Delete a beneficiary (ensuring it belongs to the user)."""
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM beneficiaries WHERE ben_id = ? AND user_id = ?", (beneficiary_id, user_id))
+    conn.commit()
+    conn.close()
+
+
+# ─────────────────────────────────────────────
+# SECURITY ALERTS Operations (customers.db)
+# ─────────────────────────────────────────────
+
+def create_security_alert(user_id: int, message: str, alert_type: str = "info") -> int:
+    """Create a new security alert for a user."""
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO security_alerts (user_id, message, type) VALUES (?, ?, ?)",
+        (user_id, message, alert_type)
+    )
+    conn.commit()
+    a_id = cursor.lastrowid
+    conn.close()
+    return a_id if a_id is not None else 0
+
+
+def get_unread_alerts(user_id: int) -> list:
+    """Get all unread security alerts for a user."""
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM security_alerts WHERE user_id = ? AND is_read = 0 ORDER BY created_at DESC", (user_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def mark_alert_read(user_id: int, alert_id: int):
+    """Mark a specific alert as read."""
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE security_alerts SET is_read = 1 WHERE id = ? AND user_id = ?", (alert_id, user_id))
+    conn.commit()
+    conn.close()
+
+
+# ─────────────────────────────────────────────
+# ACTIVE LOANS Operations (customers.db)
+# ─────────────────────────────────────────────
+
+def create_active_loan(account_id: int, principal: float, interest_rate: float,
+                       term_months: int, total_cost: float, emi: float) -> int:
+    """Record a newly approved active loan."""
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute(
+        """INSERT INTO active_loans 
+           (account_id, principal, interest_rate, term_months, total_cost_with_interest, remaining_balance, next_emi_amount)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (account_id, principal, interest_rate, term_months, total_cost, total_cost, emi)
+    )
+    conn.commit()
+    l_id = cursor.lastrowid
+    conn.close()
+    return l_id if l_id is not None else 0
+
+
+def get_active_loans_by_account(account_id: int) -> list:
+    """Get all active loans for a specific account."""
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM active_loans WHERE account_id = ? AND remaining_balance > 0 ORDER BY created_at DESC", (account_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_active_loan_by_id(loan_id: int) -> Optional[dict]:
+    """Get a specific active loan."""
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM active_loans WHERE loan_id = ?", (loan_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def update_loan_balance(loan_id: int, new_balance: float):
+    """Update the remaining balance of an active loan."""
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE active_loans SET remaining_balance = ? WHERE loan_id = ?", (new_balance, loan_id))
+    conn.commit()
+    conn.close()
+
+
+# ─────────────────────────────────────────────
 # PENDING REQUESTS (accountants.db)
 # ─────────────────────────────────────────────
 
@@ -435,17 +666,68 @@ def create_request(account_id: int, request_type: str, amount: float, details: s
     conn.commit()
     req_id = cursor.lastrowid
     conn.close()
-    return req_id
+    return req_id if req_id is not None else 0
 
 
 def get_pending_requests() -> list:
-    """Get all pending requests."""
+    """Get all requests pending accountant approval, excluding loans."""
     conn = get_connection("accountants")
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM pending_requests WHERE status = 'pending' ORDER BY created_at DESC")
+    cursor.execute("SELECT * FROM pending_requests WHERE status = 'pending' AND request_type != 'loan' ORDER BY created_at DESC")
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def get_pending_manager_requests() -> list:
+    """Get all requests pending manager approval, excluding loans."""
+    conn = get_connection("accountants")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM pending_requests WHERE status = 'pending_manager' AND request_type != 'loan' ORDER BY created_at DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_customer_loans(customer_user_id: int) -> list:
+    """Get all loan requests for a specific customer."""
+    # First get customer's accounts
+    accounts = get_accounts_by_user(customer_user_id)
+    if not accounts:
+        return []
+        
+    account_ids = [a['account_id'] for a in accounts]
+    placeholders = ','.join(['?'] * len(account_ids))
+    
+    conn = get_connection("accountants")
+    cursor = conn.cursor()
+    cursor.execute(f'''
+        SELECT * FROM pending_requests 
+        WHERE request_type = 'loan' AND account_id IN ({placeholders})
+        ORDER BY created_at DESC
+    ''', tuple(account_ids))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def get_pending_accountant_loans() -> list:
+    """Get all loan requests pending accountant approval."""
+    conn = get_connection("accountants")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM pending_requests WHERE status = 'pending' AND request_type = 'loan' ORDER BY created_at DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def get_pending_manager_loans() -> list:
+    """Get all loan requests pending manager approval."""
+    conn = get_connection("accountants")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM pending_requests WHERE status = 'pending_manager' AND request_type = 'loan' ORDER BY created_at DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
 
 
 def get_all_requests() -> list:
@@ -474,7 +756,7 @@ def update_request_status(request_id: int, status: str, processed_by: str):
 # AUDIT LOG (accountants.db)
 # ─────────────────────────────────────────────
 
-def add_audit_log(action: str, performed_by: str, account_id: int = None, details: str = ""):
+def add_audit_log(action: str, performed_by: str, account_id: Optional[int] = None, details: str = ""):
     """Record an action in the audit log."""
     conn = get_connection("accountants")
     cursor = conn.cursor()
@@ -545,7 +827,7 @@ def get_branch_info() -> list:
     return [dict(r) for r in rows]
 
 
-def create_branch(branch_name: str, location: str, manager_id: int = None) -> int:
+def create_branch(branch_name: str, location: str, manager_id: Optional[int] = None) -> int:
     """Create a new branch."""
     conn = get_connection("managers")
     cursor = conn.cursor()
@@ -556,10 +838,10 @@ def create_branch(branch_name: str, location: str, manager_id: int = None) -> in
     conn.commit()
     bid = cursor.lastrowid
     conn.close()
-    return bid
+    return bid if bid is not None else 0
 
 
-def update_branch(branch_id: int, branch_name: str, location: str, manager_id: int = None):
+def update_branch(branch_id: int, branch_name: str, location: str, manager_id: Optional[int] = None):
     """Update an existing branch."""
     conn = get_connection("managers")
     cursor = conn.cursor()
@@ -643,7 +925,6 @@ def get_user_count() -> int:
     conn.close()
     return count
 
-
 # ─────────────────────────────────────────────
 # NOTIFICATIONS (managers.db)
 # ─────────────────────────────────────────────
@@ -672,6 +953,26 @@ def get_notifications(user_id: int, limit: int = 20):
     conn.close()
     return [dict(r) for r in rows]
 
+# ─────────────────────────────────────────────
+# TICKETING API
+# ─────────────────────────────────────────────
+
+def create_ticket(user_id: int, subject: str) -> int:
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO support_tickets (user_id, subject) VALUES (?, ?)", (user_id, subject))
+    conn.commit()
+    t_id = cursor.lastrowid
+    conn.close()
+    return t_id if t_id else 0
+
+def get_tickets_by_user(user_id: int) -> list:
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM support_tickets WHERE user_id = ? ORDER BY created_at DESC", (user_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 def mark_notification_read(notif_id: int):
     """Mark a notification as read."""
@@ -717,7 +1018,7 @@ def get_account_qr(account_id: int) -> str:
     cursor.execute("SELECT qr_code FROM accounts WHERE account_id = ?", (account_id,))
     row = cursor.fetchone()
     conn.close()
-    return row[0] if row else None
+    return str(row[0]) if row and row[0] else ""
 
 
 # ─────────────────────────────────────────────
@@ -745,6 +1046,13 @@ def get_beneficiaries(user_id: int):
     conn.close()
     return [dict(r) for r in rows]
 
+def get_all_tickets() -> list:
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM support_tickets ORDER BY CASE WHEN status = 'open' THEN 0 ELSE 1 END, created_at DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 def delete_beneficiary(ben_id: int):
     """Delete a beneficiary by ID."""
@@ -780,6 +1088,13 @@ def get_loans_by_user(user_id: int):
     conn.close()
     return [dict(r) for r in rows]
 
+def get_ticket_messages(ticket_id: int) -> list:
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM ticket_messages WHERE ticket_id = ? ORDER BY created_at ASC", (ticket_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 def get_all_loans():
     """Get all loans (any user)."""
@@ -790,6 +1105,47 @@ def get_all_loans():
     conn.close()
     return [dict(r) for r in rows]
 
+def add_ticket_message(ticket_id: int, sender_user_id: int, message: str) -> int:
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO ticket_messages (ticket_id, sender_user_id, message) VALUES (?, ?, ?)",
+                   (ticket_id, sender_user_id, message))
+    cursor.execute("UPDATE support_tickets SET updated_at = datetime('now','localtime') WHERE ticket_id = ?", (ticket_id,))
+    conn.commit()
+    m_id = cursor.lastrowid
+    conn.close()
+    return m_id if m_id else 0
+
+def update_ticket_status(ticket_id: int, status: str):
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE support_tickets SET status = ?, updated_at = datetime('now','localtime') WHERE ticket_id = ?", (status, ticket_id))
+    conn.commit()
+    conn.close()
+
+# ─────────────────────────────────────────────
+# CREDIT CARDS API
+# ─────────────────────────────────────────────
+
+def create_credit_card(account_id: int, limit: float, apr: float) -> int:
+    import random
+    card_number = f"4000{random.randint(100000000000, 999999999999)}"
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO credit_cards (account_id, card_number, credit_limit, apr) VALUES (?, ?, ?, ?)",
+                   (account_id, card_number, limit, apr))
+    conn.commit()
+    c_id = cursor.lastrowid
+    conn.close()
+    return c_id if c_id else 0
+
+def get_credit_cards_by_account(account_id: int) -> list:
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM credit_cards WHERE account_id = ? AND status = 'active'", (account_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 def get_loan_by_id(loan_id: int):
     """Get a single loan by ID."""
@@ -800,8 +1156,22 @@ def get_loan_by_id(loan_id: int):
     conn.close()
     return dict(row) if row else None
 
+def update_credit_card_balance(card_id: int, new_balance: float):
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE credit_cards SET current_balance = ? WHERE card_id = ?", (new_balance, card_id))
+    conn.commit()
+    conn.close()
 
-def update_loan_status(loan_id: int, status: str, approved_by: str, accountant_status: str = None, manager_status: str = None):
+def get_credit_card_by_id(card_id: int) -> Optional[dict]:
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM credit_cards WHERE card_id = ?", (card_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def update_loan_status(loan_id: int, status: str, approved_by: str, accountant_status: str = "", manager_status: str = ""):
     """Update a loan's status (approved/rejected)."""
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     conn = get_connection("customers")
@@ -830,5 +1200,22 @@ def make_emi_payment(loan_id: int, amount: float):
     loan = cursor.fetchone()
     if loan and loan['total_paid'] >= (loan['emi_amount'] * loan['tenure_months']):
         cursor.execute("UPDATE loans SET status = 'closed' WHERE loan_id = ?", (loan_id,))
+    conn.commit()
+    conn.close()
+
+def get_all_credit_cards() -> list:
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM credit_cards ORDER BY card_id")
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def update_user_avatar(user_id: int, avatar_b64: str):
+    conn = get_connection("managers")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET avatar_b64 = ? WHERE user_id = ?", (avatar_b64, user_id))
+    conn.commit()
+    conn.close()
     conn.commit()
     conn.close()

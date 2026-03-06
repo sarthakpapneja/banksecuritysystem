@@ -6,8 +6,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Apex Trust Bank</title>
     <meta name="description" content="Apex Trust Bank — Secure banking management with role-based access control">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" type="image/png" href="/static/logo.png">
+    <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 
 <body>
@@ -80,12 +84,22 @@
                         </div>
                     </div>
                 </div>
+                <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle Dark/Light Mode">
+                    <span class="icon" id="themeIcon" data-lucide="sun"></span>
+                </button>
                 <div class="user-badge" id="userBadge">
                     <div class="avatar" id="userAvatar"></div>
                     <div class="info">
                         <div class="name" id="userName"></div>
                         <div class="role-tag" id="userRole"></div>
                     </div>
+                </div>
+                <div class="alerts-icon" onclick="showSecurityAlerts()" style="cursor: pointer; margin-right: 15px; position: relative;">
+                    <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                        <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                    </svg>
+                    <span id="alertsBadge" style="display: none; position: absolute; top: -5px; right: -5px; background: #e74c3c; color: white; border-radius: 50%; padding: 2px 6px; font-size: 10px; font-weight: bold;">0</span>
                 </div>
                 <button class="btn-logout" onclick="handleLogout()">Logout</button>
             </div>
@@ -114,6 +128,32 @@
 
     <script>
         // ═══════════════════════════════════════════
+        // THEME MANAGEMENT
+        // ═══════════════════════════════════════════
+        function initTheme() {
+            const savedTheme = localStorage.getItem('apex-theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            updateThemeIcon(savedTheme);
+        }
+
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('apex-theme', newTheme);
+            updateThemeIcon(newTheme);
+        }
+
+        function updateThemeIcon(theme) {
+            const iconEl = document.getElementById('themeIcon');
+            if (!iconEl) return;
+            iconEl.setAttribute('data-lucide', theme === 'dark' ? 'moon' : 'sun');
+            if (window.lucide) lucide.createIcons();
+        }
+
+        initTheme();
+
+        // ═══════════════════════════════════════════
         // STATE
         // ═══════════════════════════════════════════
         let currentUser = null;
@@ -128,8 +168,18 @@
                 ...opts,
                 body: opts.body ? JSON.stringify(opts.body) : undefined,
             });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Request failed');
+            
+            const contentType = res.headers.get('content-type');
+            let data;
+            if (contentType && contentType.includes('application/json')) {
+                data = await res.json();
+            } else {
+                const text = await res.text();
+                if (!res.ok) throw new Error(`Server error (${res.status}): ${text.slice(0, 100)}`);
+                data = { message: text };
+            }
+
+            if (!res.ok) throw new Error(data.error || data.message || 'Request failed');
             return data;
         }
 
@@ -188,10 +238,16 @@
             document.getElementById('dashboard').classList.add('active');
 
             // User badge
-            const initials = currentUser.full_name.split(' ').map(w => w[0]).join('');
             const avatar = document.getElementById('userAvatar');
-            avatar.textContent = initials;
-            avatar.className = `avatar ${currentUser.role}`;
+            if (currentUser.avatar_b64) {
+                avatar.innerHTML = `<img src="${currentUser.avatar_b64}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">`;
+                avatar.className = `avatar ${currentUser.role}`;
+            } else {
+                const initials = currentUser.full_name.split(' ').map(w => w[0]).join('');
+                avatar.innerHTML = initials;
+                avatar.className = `avatar ${currentUser.role}`;
+            }
+            
             document.getElementById('userName').textContent = currentUser.full_name;
             const roleEl = document.getElementById('userRole');
             roleEl.textContent = currentUser.role;
@@ -199,6 +255,7 @@
 
             buildSidebar();
             navigateToFirst();
+            fetchAlertsBadge();
         }
 
         // ── Navigation Configs ──
@@ -222,6 +279,7 @@
             quickpay: '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>',
             loans: '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M3 21h18M3 10h18M5 10V7a2 2 0 012-2h10a2 2 0 012 2v3M7 21v-4M12 21v-4M17 21v-4M12 5V2"/></svg>',
             notifs: '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/></svg>',
+            ticket: '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>',
         };
         const NAV = {
             customer: [
@@ -232,6 +290,9 @@
                 { id: 'transfer', icon: ICONS.transfer, label: 'Transfer' },
                 { id: 'quick-pay', icon: ICONS.quickpay, label: 'Quick Pay' },
                 { id: 'loans', icon: ICONS.loans, label: 'My Loans' },
+                { id: 'creditcards', icon: ICONS.accounts, label: 'Credit Cards' },
+                { id: 'beneficiaries', icon: ICONS.users, label: 'Beneficiaries' },
+                { id: 'tickets', icon: ICONS.ticket, label: 'Support Tickets' },
                 { id: 'notifications', icon: ICONS.notifs, label: 'Notifications' },
                 { section: 'Reports' },
                 { id: 'audit', icon: ICONS.audit, label: 'Activity Logs' },
@@ -246,6 +307,7 @@
                 { id: 'loan-requests', icon: ICONS.loans, label: 'Loan Apps' },
                 { id: 'all-txns', icon: ICONS.txns, label: 'All Transactions' },
                 { id: 'audit-log', icon: ICONS.audit, label: 'Audit Log' },
+                { id: 'tickets', icon: ICONS.ticket, label: 'Support Tickets' },
                 { section: 'Account Management' },
                 { id: 'create-account', icon: ICONS.createacc, label: 'Create Account' },
                 { section: 'Settings' },
@@ -258,6 +320,7 @@
                 { id: 'users', icon: ICONS.users, label: 'Manage Users' },
                 { id: 'branches', icon: ICONS.branches, label: 'Branches' },
                 { id: 'loan-requests', icon: ICONS.loans, label: 'Loan Apps' },
+                { id: 'tickets', icon: ICONS.ticket, label: 'Support Tickets' },
                 { section: 'Operations' },
                 { id: 'accounts', icon: ICONS.accounts, label: 'All Accounts' },
                 { id: 'requests', icon: ICONS.requests, label: 'Pending Requests' },
@@ -292,6 +355,7 @@
                     nav.appendChild(btn);
                 }
             });
+            if (window.lucide) lucide.createIcons();
         }
 
         function navigateToFirst() {
@@ -373,7 +437,7 @@
         // ═══════════════════════════════════════════
         // PAGE RENDERERS
         // ═══════════════════════════════════════════
-        const PAGE_RENDERERS = {
+        var PAGE_RENDERERS = {
             overview: renderOverview,
             accounts: renderAccounts,
             deposit: renderDeposit,
@@ -394,16 +458,34 @@
             'quick-pay': renderQuickPay,
             'loans': renderLoans,
             'loan-requests': renderLoanRequests,
+            'loan': renderLoan,
+            'loanapps': renderLoanApps,
+            'beneficiaries': renderBeneficiaries,
+            'tickets': renderTickets,
+            'creditcards': renderCreditCards,
         };
+
+        function navigate(pageId) {
+            currentPage = pageId;
+            // Update nav
+            document.querySelectorAll('.nav-item').forEach(el => {
+                el.classList.toggle('active', el.dataset.page === pageId);
+            });
+            // Render
+            const content = document.getElementById('contentArea');
+            const renderer = PAGE_RENDERERS[pageId];
+            if (renderer) renderer(content);
+            else content.innerHTML = `<div class="empty-state"><div class="icon">—</div><p>Page not found</p></div>`;
+        }
 
         // ── OVERVIEW ──
         async function renderOverview(el) {
-            el.innerHTML = `
-        <div class="page-header"><h2>Dashboard Overview</h2><p>Welcome back, ${currentUser.full_name}</p></div>
-        <div class="stats-grid" id="overviewStats"></div>
-        <div id="quickActionsArea"></div>
-        <div id="accountCardsArea"></div>
-        <div class="table-card" id="overviewTable"></div>
+        el.innerHTML = `
+        <div class="page-header animate-in"><h2>Dashboard Overview</h2><p>Welcome back, ${currentUser.full_name}</p></div>
+        <div class="stats-grid animate-in" id="overviewStats"></div>
+        <div id="quickActionsArea" class="animate-in"></div>
+        <div id="accountCardsArea" class="animate-in"></div>
+        <div class="table-card animate-in" id="overviewTable"></div>
     `;
 
             const accounts = await api('/api/accounts');
@@ -488,10 +570,10 @@
         // ── ACCOUNTS ──
         async function renderAccounts(el) {
             const isCustomer = currentUser.role === 'customer';
-            el.innerHTML = `
-        <div class="page-header"><h2>${isCustomer ? 'My Accounts' : 'All Accounts'}</h2><p>${isCustomer ? 'Your bank accounts and balances' : 'All customer accounts in the system'}</p></div>
-        <div class="stats-grid" id="accStats"></div>
-        <div class="table-card" id="accTable"></div>
+        el.innerHTML = `
+        <div class="page-header animate-in"><h2>${isCustomer ? 'My Accounts' : 'All Accounts'}</h2><p>${isCustomer ? 'Your bank accounts and balances' : 'All customer accounts in the system'}</p></div>
+        <div class="stats-grid animate-in" id="accStats"></div>
+        <div class="table-card animate-in" id="accTable"></div>
     `;
 
             const accounts = await api('/api/accounts');
@@ -637,32 +719,68 @@
             const activeAccounts = accounts.filter(a => a.is_active);
             if (!activeAccounts.length) {
                 el.innerHTML = `
-            <div class="page-header"><h2>Transfer Funds</h2><p>Send money to another account</p></div>
-            <div class="empty-state"><div class="icon">—</div><p>No accounts found</p></div>
-        `;
+                    <div class="page-header"><h2>Transfer Funds</h2><p>Send money to another account</p></div>
+                    <div class="empty-state"><div class="icon">—</div><p>No accounts found</p></div>
+                `;
                 return;
             }
+            
+            // Fetch beneficiaries for quick selection
+            let beneficiaries = [];
+            try { beneficiaries = await api('/api/beneficiaries'); } catch(e){}
+
             el.innerHTML = `
-        <div class="page-header"><h2>Transfer Funds</h2><p>Send money to another account</p></div>
-        <div class="modal" style="max-width:480px">
-            <div class="form-group"><label>From Account</label>
-                <select id="fromAccount">${activeAccounts.map(a => `<option value="${a.account_id}">#${a.account_id} — ${a.account_type.toUpperCase()} (${formatCurrency(a.balance)})</option>`).join('')}</select>
-            </div>
-            <div class="form-group">
-                <label>Target Account ID</label>
-                <div style="display:flex;gap:8px">
-                    <input type="number" id="toAccount" placeholder="Recipient 6-digit Account ID" style="flex:1">
-                    <button class="btn btn-sm btn-ghost" onclick="viewRecipientQr()" title="View QR"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2M7 7h4v4H7V7zm6 0h4v4h-4V7zm0 6h4v4h-4v-4zm-6 0h4v4H7v-4z"/></svg></button>
+                <div class="page-header"><h2>Transfer Funds</h2><p>Send money to another account</p></div>
+                <div class="modal" style="max-width:480px">
+                    <div class="form-group"><label>From Account</label>
+                        <select id="fromAccount">${activeAccounts.map(a => `<option value="${a.account_id}">#${a.account_id} — ${a.account_type.toUpperCase()} (${formatCurrency(a.balance)})</option>`).join('')}</select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>To Account #</label>
+                        <div style="display:flex; gap: 8px;">
+                            <input type="number" id="toAccount" placeholder="Enter recipient Account ID" style="flex: 1;" oninput="fetchRecipientName()" list="benList">
+                            ${beneficiaries.length ? `<datalist id="benList">
+                                ${beneficiaries.map(b => `<option value="${b.account_id}">${b.name}</option>`).join('')}
+                            </datalist>` : ''}
+                            <button class="btn btn-ghost" type="button" onclick="fetchPayeeQR()" title="Fetch UPI QR"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2M7 7h4v4H7V7zm6 0h4v4h-4V7zm0 6h4v4h-4v-4zm-6 0h4v4H7v-4z"/></svg></button>
+                        </div>
+                        <div id="recipientNameDisplay" style="font-size: 0.85rem; color: var(--success); margin-top: 4px; font-weight: 500; min-height: 20px;"></div>
+                    </div>
+
+                    <div id="qrDisplayArea" style="display:none; text-align:center; padding: 15px; background: var(--bg-card); border-radius: 8px; margin-bottom: 15px; border: 1px dashed var(--border-light);">
+                        <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom: 10px;">Payee UPI QR Code</p>
+                        <img id="scannedQRImg" src="" style="max-width: 150px; border-radius: 4px; border: 1px solid var(--border-light); padding: 5px; background: white;" />
+                    </div>
+
+                    <div class="form-group"><label>Amount (₹)</label><input type="number" id="transferAmt" min="1" step="0.01" placeholder="Enter amount"></div>
+                    
+                    <div class="form-group" id="saveBenGroup" style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+                        <input type="checkbox" id="saveBen" style="width:auto;margin:0">
+                        <label for="saveBen" style="margin:0;font-size:0.85rem;cursor:pointer">Save recipient as beneficiary</label>
+                    </div>
+
+                    <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:16px"> Transfers ≥ ₹5,000 require accountant approval</p>
+                    <button class="btn btn-primary" onclick="confirmTransfer()" style="width:100%">Transfer Funds</button>
                 </div>
-            </div>
-            <div class="form-group"><label>Amount (₹)</label><input type="number" id="transferAmt" min="1" step="0.01" placeholder="Enter amount"></div>
-            <div class="form-group" id="saveBenGroup" style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-                <input type="checkbox" id="saveBen" style="width:auto;margin:0">
-                <label for="saveBen" style="margin:0;font-size:0.85rem;cursor:pointer">Save recipient as beneficiary</label>
-            </div>
-            <button class="btn btn-primary" onclick="confirmTransfer()" style="width:100%">Transfer Funds</button>
-        </div>
-    `;
+            `;
+        }
+        
+        async function fetchPayeeQR() {
+            const accId = document.getElementById('toAccount').value;
+            if (!accId) { showToast("Please enter an Account ID first", "error"); return; }
+            
+            try {
+                const data = await api(`/api/account/${accId}/qr`);
+                const qrArea = document.getElementById('qrDisplayArea');
+                const qrImg = document.getElementById('scannedQRImg');
+                qrImg.src = data.qr_code_b64;
+                qrArea.style.display = 'block';
+                showToast("Payee QR Code fetched successfully!");
+            } catch (e) {
+                showToast(e.message || "Payee does not have a QR Code registered", "error");
+                document.getElementById('qrDisplayArea').style.display = 'none';
+            }
         }
 
         function confirmTransfer() {
@@ -713,6 +831,158 @@
             } catch (e) { showToast(e.message, 'error'); }
         }
 
+        async function fetchRecipientName() {
+            const toAccInput = document.getElementById('toAccount');
+            const nameDisplay = document.getElementById('recipientNameDisplay');
+            const accId = toAccInput.value;
+
+            if (!accId || accId.length < 1) {
+                nameDisplay.textContent = '';
+                return;
+            }
+
+            try {
+                // Since this is just a UI enhancement to prevent typos, we can use an endpoint if available.
+                // If it fails or returns nothing, we just ignore it.
+                // Assuming we can derive it from the accounts endpoint for now (mock behavior if needed).
+                // A better approach in a real app would be a dedicated /api/account/lookup endpoint.
+                const accounts = await api('/api/accounts'); 
+                const acc = accounts.find(a => a.account_id === +accId);
+                
+                if (acc) {
+                    nameDisplay.textContent = `Payee: ${acc.customer_name}`;
+                    nameDisplay.style.color = 'var(--success)';
+                } else {
+                    nameDisplay.textContent = 'Account not found';
+                    nameDisplay.style.color = 'var(--danger)';
+                }
+            } catch (e) {
+                nameDisplay.textContent = '';
+            }
+        }
+
+        // ── LOAN (CUSTOMER) ──
+        async function renderLoan(el) {
+            const accounts = await api('/api/accounts');
+            const activeAccounts = accounts.filter(a => a.is_active);
+            const loans = await api('/api/loans');
+            let activeLoans = [];
+            try { activeLoans = await api('/api/active_loans'); } catch(e){}
+
+            let html = `<div class="page-header"><h2>Loans</h2><p>Apply for a loan, pay EMIs, and check statuses</p></div>`;
+
+            // Active Loans Section
+            if (activeLoans.length > 0) {
+                html += `<h3 style="color:var(--text-primary);margin-bottom:1rem;">Your Active Loans</h3>`;
+                html += `<div class="table-card" style="margin-bottom: 2rem;"><table class="table">
+                <thead><tr><th>Loan ID</th><th>Acc ID</th><th>Principal</th><th>Rate</th><th>Balance</th><th>Next EMI</th><th>Actions</th></tr></thead><tbody>
+                ${activeLoans.map(al => `
+                    <tr>
+                        <td style="font-weight:600">LN-${al.loan_id}</td>
+                        <td>#${al.account_id}</td>
+                        <td>${formatCurrency(al.principal)}</td>
+                        <td>${al.interest_rate}%</td>
+                        <td style="color:var(--accent-red); font-weight:bold;">${formatCurrency(al.remaining_balance)}</td>
+                        <td>${formatCurrency(Math.min(al.next_emi_amount, al.remaining_balance))}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="payEmi(${al.loan_id}, ${Math.min(al.next_emi_amount, al.remaining_balance)})">Pay EMI</button>
+                        </td>
+                    </tr>
+                `).join('')}</tbody></table></div>`;
+            }
+
+            if (activeAccounts.length) {
+                html += `
+                <div class="modal" style="max-width:480px; margin-bottom: 2rem;">
+                    <h3 style="margin-top:0;margin-bottom:1rem;color:var(--text-primary)">Apply for New Loan</h3>
+                    <div class="form-group"><label>Account to Credit</label>
+                        <select id="loanAcc">${activeAccounts.map(a => `<option value="${a.account_id}">#${a.account_id} — ${a.account_type.toUpperCase()} (${formatCurrency(a.balance)})</option>`).join('')}</select>
+                    </div>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div class="form-group"><label>Loan Amount (₹)</label><input type="number" id="loanAmt" min="1" step="0.01" placeholder="Enter amount" oninput="updateLoanPreview()"></div>
+                        <div class="form-group"><label>Term (Months)</label><input type="number" id="loanTerm" value="12" min="1" max="60" oninput="updateLoanPreview()"></div>
+                    </div>
+                    
+                    <div id="loanPreview" style="background:var(--bg-document); padding: 12px; border-radius: 6px; margin-bottom: 16px; font-size: 0.85rem; border: 1px solid var(--border-light);">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span>Interest Rate (Fixed):</span> <span style="font-weight:600;">8.0%</span></div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span>Total Interest:</span> <span id="previewInterest" style="font-weight:600;">₹0.00</span></div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span>Total Cost:</span> <span id="previewTotal" style="font-weight:600;">₹0.00</span></div>
+                        <div style="display:flex; justify-content:space-between; margin-top:8px; padding-top:8px; border-top: 1px solid var(--border-light);">
+                            <span style="font-weight:bold;">Estimated EMI:</span> <span id="previewEmi" style="font-weight:bold; color:var(--primary-600);">₹0.00 / month</span>
+                        </div>
+                    </div>
+                    
+                    <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:16px"> All loan requests require two-step approval by an Accountant and a Manager.</p>
+                    <button class="btn btn-primary" onclick="doLoanApply()" style="width:100%">Submit Application</button>
+                </div>`;
+            } else {
+                html += `<div class="empty-state"><div class="icon">—</div><p>No active accounts found to credit loan.</p></div>`;
+            }
+
+            html += `<h3 style="color:var(--text-primary);margin-bottom:1rem;">My Loan Applications History</h3>`;
+            if (!loans.length) {
+                html += `<div class="empty-state"><div class="icon">—</div><p>No past or current loan applications found.</p></div>`;
+            } else {
+                html += `<div class="table-card"><table class="table">
+                <thead><tr><th>Req ID</th><th>Acc ID</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead><tbody>
+                ${loans.map(l => {
+                    let badgeClass = 'badge-yellow';
+                    let statusText = l.status;
+                    if (l.status === 'pending') { statusText = 'Accountant Approval'; badgeClass='badge-blue'; }
+                    else if (l.status === 'pending_manager') { statusText = 'Manager Approval'; badgeClass='badge-yellow'; }
+                    else if (l.status === 'approved') { statusText = 'Approved'; badgeClass='badge-green'; }
+                    else if (l.status === 'rejected') { statusText = 'Rejected'; badgeClass='badge-red'; }
+                    
+                    return `
+                    <tr>
+                        <td style="font-weight:600">#${l.request_id}</td>
+                        <td>#${l.account_id}</td>
+                        <td style="font-weight:500;">${formatCurrency(l.amount)}</td>
+                        <td><span class="badge ${badgeClass}">${statusText}</span></td>
+                        <td style="color:var(--text-muted);font-size:0.82rem">${l.created_at}</td>
+                    </tr>`;
+                }).join('')}</tbody></table></div>`;
+            }
+            el.innerHTML = html;
+        }
+        
+        function updateLoanPreview() {
+            const amt = parseFloat(document.getElementById('loanAmt').value) || 0;
+            const months = parseInt(document.getElementById('loanTerm').value) || 12;
+            const rate = 8.0; // Fixed 8% for demo
+            
+            const totalInterest = amt * (rate / 100) * (months / 12);
+            const totalCost = amt + totalInterest;
+            const emi = months > 0 ? totalCost / months : 0;
+            
+            document.getElementById('previewInterest').textContent = formatCurrency(totalInterest);
+            document.getElementById('previewTotal').textContent = formatCurrency(totalCost);
+            document.getElementById('previewEmi').textContent = formatCurrency(emi) + " / month";
+        }
+        
+        async function payEmi(loanId, amount) {
+            if (!confirm(`Pay EMI of ${formatCurrency(amount)} for Loan LN-${loanId}? This will be deducted from the linked account.`)) return;
+            try {
+                const res = await api('/api/loan/pay', { method: 'POST', body: { loan_id: loanId } });
+                showToast(res.message, 'success');
+                navigate('loan'); // Refresh
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
+        async function doLoanApply() {
+            try {
+                const data = await api('/api/loan/apply', {
+                    method: 'POST', body: {
+                        account_id: +document.getElementById('loanAcc').value,
+                        amount: +document.getElementById('loanAmt').value,
+                        term_months: parseInt(document.getElementById('loanTerm').value) || 12
+                    }
+                });
+                showToast(data.message, 'success');
+                navigate('loan');
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
         // ── PENDING REQUESTS ──
         async function renderRequests(el) {
             el.innerHTML = `<div class="page-header"><h2>Pending Requests</h2><p>Review and process pending requests</p></div><div id="reqTable"></div>`;
@@ -734,6 +1004,9 @@
             <td style="font-size:0.85rem">${r.details}</td>
             <td style="color:var(--text-muted);font-size:0.82rem">${r.created_at}</td>
             <td>
+                <span class="badge badge-blue" style="margin-right: 8px;">${r.status === 'pending_manager' ? 'Manager Approval' : 'Accountant Approval'}</span>
+            </td>
+            <td>
                 <button class="btn btn-sm btn-success" onclick="processReq(${r.request_id},'approve')">✓</button>
                 <button class="btn btn-sm btn-danger" onclick="processReq(${r.request_id},'reject')">✗</button>
             </td>
@@ -746,6 +1019,41 @@
                 const data = await api(`/api/requests/${id}/process`, { method: 'POST', body: { action } });
                 showToast(data.message);
                 navigate('requests');
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
+        // ── LOAN APPLICATIONS (Accountant/Manager) ──
+        async function renderLoanApps(el) {
+            el.innerHTML = `<div class="page-header"><h2>Loan Applications</h2><p>Review and process pending loan applications</p></div><div id="loanAppsTable"></div>`;
+            const reqs = await api('/api/loans');
+
+            if (!reqs.length) {
+                document.getElementById('loanAppsTable').innerHTML = '<div class="empty-state"><div class="icon">—</div><p>No pending loan applications</p></div>';
+                return;
+            }
+
+            document.getElementById('loanAppsTable').innerHTML = `
+        <div class="table-card"><div class="table-header"><h3>Loan Applications (${reqs.length})</h3></div>
+        <table class="data-table"><thead><tr><th>Req #</th><th>Acc #</th><th>Amount</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
+        <tbody>${reqs.map(r => `<tr>
+            <td style="font-weight:600">#${r.request_id}</td>
+            <td>#${r.account_id}</td>
+            <td style="font-weight:500;">${formatCurrency(r.amount)}</td>
+            <td><span class="badge ${r.status === 'pending' ? 'badge-blue' : 'badge-yellow'}">${r.status === 'pending' ? 'Accountant Approval' : 'Manager Approval'}</span></td>
+            <td style="color:var(--text-muted);font-size:0.82rem">${r.created_at}</td>
+            <td>
+                <button class="btn btn-sm btn-success" onclick="processLoan(${r.request_id},'approve')">✓</button>
+                <button class="btn btn-sm btn-danger" onclick="processLoan(${r.request_id},'reject')">✗</button>
+            </td>
+        </tr>`).join('')}</tbody></table></div>
+    `;
+        }
+
+        async function processLoan(id, action) {
+            try {
+                const data = await api(`/api/loans/${id}/process`, { method: 'POST', body: { action } });
+                showToast(data.message);
+                navigate('loanapps');
             } catch (e) { showToast(e.message, 'error'); }
         }
 
@@ -932,6 +1240,14 @@
             } catch (e) { showToast(e.message, 'error'); }
         }
 
+        async function unlockUser(id) {
+            try {
+                const data = await api(`/api/users/${id}/unlock`, { method: 'POST' });
+                showToast(data.message, 'success');
+                navigate('users');
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
         async function toggleUser(id) {
             try {
                 const data = await api(`/api/users/${id}/toggle`, { method: 'POST' });
@@ -975,19 +1291,48 @@
         // ── PROFILE ──
         async function renderProfile(el) {
             const p = await api('/api/profile');
+            const qrSrc = p.qr_code_b64 || '';
+            const avatarSrc = p.avatar_b64 || '';
+            
             el.innerHTML = `
-                <div class="page-header"><h2>My Profile</h2><p>Manage your personal information</p></div>
-                <div class="modal" style="max-width:520px">
-                    <div style="text-align:center;margin-bottom:20px">
-                        <div class="avatar ${p.role}" style="width:64px;height:64px;font-size:1.4rem;margin:0 auto 8px">${p.full_name.split(' ').map(w => w[0]).join('')}</div>
-                        <div style="font-weight:600;font-size:1.1rem">${p.full_name}</div>
-                        <span class="badge badge-blue">${p.role.toUpperCase()}</span>
-                        <div style="font-size:0.8rem;color:var(--text-muted);margin-top:6px">@${p.username} · Member since ${p.created_at?.slice(0, 10) || '—'}</div>
+                <div class="page-header"><h2>My Profile</h2><p>Manage your personal information, Avatar, and QR Code</p></div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+                    <div class="modal" style="width:100%; max-width:100%; margin-bottom: 24px;">
+                        <div style="text-align:center;margin-bottom:20px;position:relative">
+                            ${avatarSrc 
+                                ? `<img src="${avatarSrc}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;margin:0 auto 8px;border:3px solid var(--accent-cyan)">`
+                                : `<div class="avatar ${p.role}" style="width:80px;height:80px;font-size:2rem;margin:0 auto 8px">${p.full_name.split(' ').map(w => w[0]).join('')}</div>`
+                            }
+                            <div style="font-weight:600;font-size:1.1rem">${p.full_name}</div>
+                            <span class="badge badge-blue">${p.role.toUpperCase()}</span>
+                            <div style="font-size:0.8rem;color:var(--text-muted);margin-top:6px">@${p.username} · Member since ${p.created_at?.slice(0, 10) || '—'}</div>
+                        </div>
+                        
+                        <div style="background:#f8fafc;padding:12px;border-radius:8px;text-align:center;margin-bottom:20px;border:1px dashed #cbd5e1">
+                            <label style="font-size:0.8rem;color:var(--text-muted);display:block;margin-bottom:8px">Profile Image (Avatar)</label>
+                            <input type="file" id="avFileInput" accept="image/*" style="display:none;" onchange="handleAvatarSelect(event)">
+                            <button class="btn btn-sm btn-ghost" onclick="document.getElementById('avFileInput').click()">Choose Image</button>
+                            <button class="btn btn-sm btn-success" id="avSaveBtn" onclick="saveAvatar()" style="display:none;margin-left:8px">Upload</button>
+                            <img id="avPreview" src="" style="display:none;width:40px;height:40px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-left:12px">
+                        </div>
+
+                        <div class="form-group"><label>Email</label><input type="email" id="profEmail" value="${p.email || ''}" placeholder="your@email.com"></div>
+                        <div class="form-group"><label>Phone</label><input type="tel" id="profPhone" value="${p.phone || ''}" placeholder="+91 xxxxxxxxxx"></div>
+                        <div class="form-group"><label>Address</label><input type="text" id="profAddress" value="${p.address || ''}" placeholder="Your address"></div>
+                        <button class="btn btn-primary" onclick="saveProfile()" style="width:100%">Save ProfileDetails</button>
                     </div>
-                    <div class="form-group"><label>Email</label><input type="email" id="profEmail" value="${p.email || ''}" placeholder="your@email.com"></div>
-                    <div class="form-group"><label>Phone</label><input type="tel" id="profPhone" value="${p.phone || ''}" placeholder="+91 xxxxxxxxxx"></div>
-                    <div class="form-group"><label>Address</label><input type="text" id="profAddress" value="${p.address || ''}" placeholder="Your address"></div>
-                    <button class="btn btn-primary" onclick="saveProfile()" style="width:100%">Save Profile</button>
+                    <div class="modal" style="width:100%; max-width:100%; text-align:center;">
+                        <h3 style="margin-top:0;">My UPI QR Code</h3>
+                        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom: 24px;">Upload a QR code (e.g. from PhonePe, GPay) so others can pay you via UPI</p>
+                        
+                        <div id="qrPreviewArea" style="margin-bottom: 20px; ${qrSrc ? '' : 'display:none;'}">
+                            <img id="qrDisplay" src="${qrSrc}" style="max-width: 200px; border-radius: 8px; border: 1px solid var(--border-light); padding: 5px;" />
+                        </div>
+                        
+                        <input type="file" id="qrFileInput" accept="image/*" style="display:none;" onchange="handleQRSelect(event)">
+                        <button class="btn btn-primary" onclick="document.getElementById('qrFileInput').click()" style="width:100%; margin-bottom: 10px;">Select UPI QR Image</button>
+                        <button class="btn btn-success" id="qrSaveBtn" onclick="saveQRCode()" style="width:100%; display:none;">Upload QR Code</button>
+                    </div>
                     
                     ${p.role === 'customer' ? `
                         <div style="margin-top:24px; padding-top:20px; border-top:1px dashed var(--border)">
@@ -1011,6 +1356,68 @@
                 `).join('');
             }
         }
+
+        let pendingAvatarBase64 = null;
+        function handleAvatarSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            // Validate size (e.g. max 500KB for an avatar to avoid massive database overhead)
+            if(file.size > 500 * 1024) {
+                showToast("Please choose an image smaller than 500KB", "error");
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                pendingAvatarBase64 = e.target.result;
+                const pview = document.getElementById('avPreview');
+                pview.src = pendingAvatarBase64;
+                pview.style.display = 'inline-block';
+                document.getElementById('avSaveBtn').style.display = 'inline-block';
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function saveAvatar() {
+            if(!pendingAvatarBase64) return;
+            try {
+                await api('/api/profile/avatar', { method: 'POST', body: { avatar_b64: pendingAvatarBase64 } });
+                showToast('Avatar updated successfully!');
+                
+                // Update top navbar avatar dynamically
+                const navAvatar = document.getElementById('userAvatar');
+                navAvatar.innerHTML = `<img src="${pendingAvatarBase64}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">`;
+                
+                document.getElementById('avSaveBtn').style.display = 'none';
+                pendingAvatarBase64 = null;
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+        
+        // Hold base64 value awaiting upload
+        let pendingQRBase64 = null;
+        
+        function handleQRSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                pendingQRBase64 = e.target.result;
+                document.getElementById('qrDisplay').src = pendingQRBase64;
+                document.getElementById('qrPreviewArea').style.display = 'block';
+                document.getElementById('qrSaveBtn').style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        }
+        
+        async function saveQRCode() {
+            if (!pendingQRBase64) return;
+            try {
+                await api('/api/profile/qr', { method: 'POST', body: { qr_code_b64: pendingQRBase64 } });
+                showToast('QR Code updated successfully!');
+                document.getElementById('qrSaveBtn').style.display = 'none';
+                pendingQRBase64 = null;
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
         async function saveProfile() {
             try {
                 await api('/api/profile', {
@@ -1020,7 +1427,7 @@
                         address: document.getElementById('profAddress').value,
                     }
                 });
-                showToast('Profile updated!');
+                showToast('Profile details updated!');
             } catch (e) { showToast(e.message, 'error'); }
         }
 
@@ -1141,8 +1548,15 @@
         }
 
         // ── STATEMENT WITH DATE RANGE ──
+        function getLocalYYYYMMDD(date) {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+
         function downloadStatement(accountId) {
-            const today = new Date().toISOString().split('T')[0];
+            const todayStr = getLocalYYYYMMDD(new Date());
             const modal = document.getElementById('modalContent');
             modal.style.maxWidth = '440px';
             modal.innerHTML = `
@@ -1158,11 +1572,11 @@
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
                     <div>
                         <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--text-muted);margin-bottom:4px">FROM</label>
-                        <input type="date" id="stmtStart" class="form-input" style="width:100%" max="${today}">
+                        <input type="date" id="stmtStart" class="form-input" style="width:100%" max="${todayStr}">
                     </div>
                     <div>
                         <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--text-muted);margin-bottom:4px">TO</label>
-                        <input type="date" id="stmtEnd" class="form-input" style="width:100%" value="${today}" max="${today}">
+                        <input type="date" id="stmtEnd" class="form-input" style="width:100%" value="${todayStr}" max="${todayStr}">
                     </div>
                 </div>
                 <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end">
@@ -1175,14 +1589,14 @@
 
         function setStatementPeriod(period) {
             const today = new Date();
-            const endStr = today.toISOString().split('T')[0];
+            const endStr = getLocalYYYYMMDD(today);
             let startStr = '';
             if (period === 'month') {
-                startStr = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+                startStr = getLocalYYYYMMDD(new Date(today.getFullYear(), today.getMonth(), 1));
             } else if (period > 0) {
                 const d = new Date(today);
                 d.setDate(d.getDate() - period);
-                startStr = d.toISOString().split('T')[0];
+                startStr = getLocalYYYYMMDD(d);
             }
             document.getElementById('stmtStart').value = startStr;
             document.getElementById('stmtEnd').value = endStr;
@@ -1305,14 +1719,14 @@
                     <div class="loan-card">
                         <div class="loan-header">
                             <div><span class="badge badge-${l.status === 'active' ? 'green' : l.status === 'pending' ? 'yellow' : 'red'}">${l.status.toUpperCase()}</span>
-                            <span style="color:var(--text-muted);font-size:0.8rem;margin-left:8px">ID: LOAN${String(l.loan_id).padStart(6, '0')}</span></div>
-                            <div class="loan-amount">${formatCurrency(l.loan_amount)}</div>
+                            <span style="color:var(--text-muted);font-size:0.8rem;margin-left:8px">ID: LOAN${l.loan_id ? String(l.loan_id).padStart(6, '0') : '—'}</span></div>
+                            <div class="loan-amount">${l.loan_amount ? formatCurrency(l.loan_amount) : '—'}</div>
                         </div>
                         <div class="loan-details">
-                            <div class="loan-detail-item"><div class="label">EMI</div><div class="value">${formatCurrency(l.emi_amount)}</div></div>
-                            <div class="loan-detail-item"><div class="label">Tenure</div><div class="value">${l.tenure_months} mo</div></div>
-                            <div class="loan-detail-item"><div class="label">Interest</div><div class="value">${l.interest_rate}%</div></div>
-                            <div class="loan-detail-item"><div class="label">Paid</div><div class="value">${formatCurrency(l.total_paid)}</div></div>
+                            <div class="loan-detail-item"><div class="label">EMI</div><div class="value">${l.emi_amount ? formatCurrency(l.emi_amount) : '—'}</div></div>
+                            <div class="loan-detail-item"><div class="label">Tenure</div><div class="value">${l.tenure_months ? l.tenure_months + ' mo' : '—'}</div></div>
+                            <div class="loan-detail-item"><div class="label">Interest</div><div class="value">${l.interest_rate ? l.interest_rate + '%' : '—'}</div></div>
+                            <div class="loan-detail-item"><div class="label">Paid</div><div class="value">${l.total_paid ? formatCurrency(l.total_paid) : '—'}</div></div>
                         </div>
                         ${l.status === 'active' ? `
                             <div style="margin-top:16px; text-align:right">
@@ -1523,7 +1937,10 @@
                 modal.innerHTML = `
                     <button class="modal-close" onclick="closeModal()" style="position:absolute;top:12px;right:16px;background:none;border:none;font-size:1.5rem;color:var(--text-muted);cursor:pointer">&times;</button>
                     <div class="customer-detail-header">
-                        <div class="avatar" style="width:56px;height:56px;font-size:1.3rem">${u.full_name.split(' ').map(n => n[0]).join('')}</div>
+                        ${u.avatar_b64 
+                            ? `<img src="${u.avatar_b64}" style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid var(--border-light)">`
+                            : `<div class="avatar" style="width:56px;height:56px;font-size:1.3rem">${u.full_name.split(' ').map(n => n[0]).join('')}</div>`
+                        }
                         <div>
                             <h2 style="margin:0">${u.full_name}</h2>
                             <div style="color:var(--text-muted);font-size:0.9rem">@${u.username} &middot; <span class="badge badge-${u.role === 'manager' ? 'red' : u.role === 'accountant' ? 'yellow' : 'green'}">${u.role}</span>
@@ -1649,6 +2066,414 @@
             } catch (e) { showToast('Account not found', 'error'); }
         }
 
+        // ── SECURITY ALERTS ──
+        async function fetchAlertsBadge() {
+            if (!currentUser) return;
+            try {
+                const alerts = await api('/api/alerts');
+                const badge = document.getElementById('alertsBadge');
+                if (alerts.length > 0) {
+                    badge.textContent = alerts.length;
+                    badge.style.display = 'block';
+                } else {
+                    badge.style.display = 'none';
+                }
+            } catch (e) { console.error('Error fetching alerts', e); }
+        }
+
+        async function showSecurityAlerts() {
+            try {
+                const alerts = await api('/api/alerts');
+                const modal = document.getElementById('modalContent');
+                modal.style.maxWidth = '500px';
+                
+                let alertsHtml = '';
+                if (alerts.length === 0) {
+                    alertsHtml = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">No new security alerts.</div>';
+                } else {
+                    alertsHtml = alerts.map(a => `
+                        <div style="background: var(--bg-card); padding: 12px; margin-bottom: 10px; border-radius: 6px; border-left: 4px solid var(--accent-${a.type === 'warning' ? 'yellow' : a.type === 'danger' ? 'red' : 'green'}); display: flex; justify-content: space-between; align-items: flex-start;">
+                            <div>
+                                <div style="font-size: 0.9rem; margin-bottom: 4px;">${a.message}</div>
+                                <div style="font-size: 0.75rem; color: var(--text-muted);">${a.created_at}</div>
+                            </div>
+                            <button class="btn btn-sm btn-ghost" onclick="markAlertRead(${a.id})" style="padding: 2px 8px; font-size: 0.8rem;">Dismiss</button>
+                        </div>
+                    `).join('');
+                }
+
+                modal.innerHTML = `
+                    <h3 style="margin-top:0;">Security Alerts</h3>
+                    <div style="max-height: 400px; overflow-y: auto; margin-bottom: 15px;">
+                        ${alertsHtml}
+                    </div>
+                    <div class="modal-actions">
+                        <button class="btn btn-sm btn-ghost" onclick="closeModal()">Close</button>
+                    </div>
+                `;
+                document.getElementById('modalOverlay').classList.add('visible');
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
+        async function markAlertRead(alertId) {
+            try {
+                await api(`/api/alerts/${alertId}/read`, { method: 'POST' });
+                showSecurityAlerts(); // Refresh modal
+                fetchAlertsBadge(); // Refresh badge
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
+        // ── BENEFICIARIES ──
+        async function renderBeneficiaries(el) {
+            el.innerHTML = `<div class="page-header"><h2>Saved Beneficiaries</h2><p>Manage your saved payees for quick transfers</p></div><div id="beneficiariesContent">Loading...</div>`;
+            const ben = await api('/api/beneficiaries');
+
+            let html = `
+                <button class="btn btn-success" onclick="showAddBeneficiaryModal()" style="margin-bottom:16px">+ Add Beneficiary</button>
+                <div class="table-card" style="margin-top:10px">
+                    <div class="table-header"><h3>Your Saved Payees (${ben.length})</h3></div>
+            `;
+            
+            if (!ben.length) {
+                html += '<div style="padding: 30px; text-align: center; color: var(--text-muted);">No beneficiaries saved yet.</div>';
+            } else {
+                html += `<table class="data-table"><thead><tr><th>Name/Nickname</th><th>Account ID</th><th>Added On</th><th>Actions</th></tr></thead>
+                <tbody>${ben.map(b => `<tr>
+                    <td style="font-weight:600">${b.name}</td>
+                    <td>#${b.account_id}</td>
+                    <td style="color:var(--text-muted);font-size:0.82rem">${b.created_at.split(' ')[0]}</td>
+                    <td>
+                        <button class="btn btn-sm btn-danger" onclick="deleteBeneficiary(event, ${b.ben_id})">Remove</button>
+                    </td>
+                </tr>`).join('')}</tbody></table>`;
+            }
+            html += `</div>`;
+            
+            document.getElementById('beneficiariesContent').innerHTML = html;
+        }
+
+        function showAddBeneficiaryModal() {
+            openAddBeneficiary();
+        }
+
+        async function doAddBeneficiary() {
+            try {
+                await api('/api/beneficiaries', {
+                    method: 'POST', body: {
+                        account_id: +document.getElementById('benAccId').value,
+                        name: document.getElementById('benName').value,
+                    }
+                });
+                closeModal();
+                showToast('Beneficiary added successfully!');
+                navigate('beneficiaries');
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
+        async function deleteBeneficiary(id, name) {
+            if (!confirm(`Remove "${name}" from your beneficiaries?`)) return;
+            try {
+                await api(`/api/beneficiaries/${id}`, { method: 'DELETE' });
+                showToast('Beneficiary removed');
+                navigate('beneficiaries');
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
+        // ── SUPPORT TICKETS ──
+        async function renderTickets(el) {
+            el.innerHTML = `
+                <div class="page-header">
+                    <h2>Support Tickets</h2>
+                    <p>${currentUser.role === 'customer' ? 'Need help? Open a ticket below.' : 'Manage customer inquiries'}</p>
+                </div>
+                ${currentUser.role === 'customer' ? `<button class="btn btn-success" onclick="showCreateTicketModal()" style="margin-bottom:16px">+ Open New Ticket</button>` : ''}
+                <div id="ticketsGrid" style="display:grid;grid-template-columns:300px 1fr;gap:20px;height:calc(100vh - 250px)">
+                    <div class="table-card" style="overflow-y:auto; overflow-x:hidden;" id="ticketsListArea">Loading tickets...</div>
+                    <div class="table-card" style="display:flex;flex-direction:column;position:relative;" id="ticketDetailArea">
+                        <div style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--text-muted)">
+                            Select a ticket to view conversation
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            try {
+                const tickets = await api('/api/tickets');
+                const listArea = document.getElementById('ticketsListArea');
+                
+                if (!tickets.length) {
+                    listArea.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text-muted)">No tickets found</div>`;
+                    return;
+                }
+                
+                listArea.innerHTML = tickets.map(t => `
+                    <div class="ticket-item" style="padding:15px;border-bottom:1px solid var(--border-light);cursor:pointer;transition:background 0.2s" 
+                         onclick="viewTicket(${t.ticket_id}, '${t.subject.replace(/'/g, "\\'")}', '${t.status}')"
+                         onmouseover="this.style.background='var(--bg-main)'" onmouseout="this.style.background='transparent'">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+                            <strong style="font-size:0.95rem;color:var(--text-main);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px">${t.subject}</strong>
+                            <span class="badge ${t.status === 'open' ? 'badge-yellow' : 'badge-green'}">${t.status}</span>
+                        </div>
+                        <div style="font-size:0.8rem;color:var(--text-muted)">
+                            #${t.ticket_id} • ${t.updated_at.split(' ')[0]}
+                            ${t.customer_name ? `<br/>By: ${t.customer_name}` : ''}
+                        </div>
+                    </div>
+                `).join('');
+                
+            } catch (e) { document.getElementById('ticketsListArea').innerHTML = `Error: ${e.message}`; }
+        }
+
+        function showCreateTicketModal() {
+            document.getElementById('modalContent').innerHTML = `
+                <h3 style="margin-bottom:16px">Open Support Ticket</h3>
+                <div class="form-group"><label>Subject / Issue</label><input type="text" id="ticketSubj" placeholder="e.g. Disputed charge on Account #2"></div>
+                <div class="form-group"><label>Initial Message</label><textarea id="ticketMsg" class="form-input" style="height:100px;width:100%"></textarea></div>
+                <button class="btn btn-success" onclick="doCreateTicket()" style="width:100%">Submit Ticket</button>
+            `;
+            document.getElementById('modalOverlay').classList.add('visible');
+        }
+
+        async function doCreateTicket() {
+            const subject = document.getElementById('ticketSubj').value;
+            const message = document.getElementById('ticketMsg').value;
+            try {
+                const res = await api('/api/tickets', { method: 'POST', body: { subject } });
+                await api(`/api/tickets/${res.ticket_id}/messages`, { method: 'POST', body: { message } });
+                closeModal();
+                showToast('Ticket submitted successfully');
+                navigate('tickets');
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
+        async function viewTicket(ticket_id, subject, status) {
+            const detailArea = document.getElementById('ticketDetailArea');
+            detailArea.innerHTML = `<div style="padding:20px;text-align:center">Loading thread...</div>`;
+            
+            try {
+                const msgs = await api(`/api/tickets/${ticket_id}/messages`);
+                let canReply = status === 'open';
+                
+                let html = `
+                    <div style="padding:15px 20px;border-bottom:1px solid var(--border-light);display:flex;justify-content:space-between;align-items:center;background:var(--bg-main);border-radius:12px 12px 0 0">
+                        <div>
+                            <h3 style="margin:0;font-size:1.1rem">${subject}</h3>
+                            <span style="font-size:0.8rem;color:var(--text-muted)">Ticket #${ticket_id}</span>
+                        </div>
+                        ${currentUser.role !== 'customer' && status === 'open' ? `<button class="btn btn-sm btn-ghost" onclick="closeTicket(${ticket_id})">Mark Resolved</button>` : ''}
+                    </div>
+                    
+                    <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:15px;background:#f8fafc" id="ticketChat">
+                        ${msgs.map(m => `
+                            <div style="display:flex;flex-direction:column;align-items:${m.sender_user_id === currentUser.user_id ? 'flex-end' : 'flex-start'}">
+                                <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:4px;padding:0 4px">
+                                    ${m.sender_user_id === currentUser.user_id ? 'You' : m.sender_name} • ${m.created_at.slice(11,16)}
+                                </div>
+                                <div style="background:${m.sender_user_id === currentUser.user_id ? '#0c2340' : '#ffffff'};color:${m.sender_user_id === currentUser.user_id ? 'white' : 'var(--text-main)'};padding:12px 16px;border-radius:16px;max-width:80%;box-shadow:0 1px 2px rgba(0,0,0,0.05);border:${m.sender_user_id === currentUser.user_id ? 'none' : '1px solid #e2e8f0'}">
+                                    ${m.message.replace(/\\n/g, '<br/>')}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    
+                    ${canReply ? `
+                    <div style="padding:15px;border-top:1px solid var(--border-light);background:white;border-radius:0 0 12px 12px;display:flex;gap:10px">
+                        <input type="text" id="tReplyInput" class="form-input" style="flex:1" placeholder="Type a reply..." onkeypress="if(event.key==='Enter') replyTicket(${ticket_id})">
+                        <button class="btn btn-primary" onclick="replyTicket(${ticket_id})">Send</button>
+                    </div>
+                    ` : `
+                    <div style="padding:15px;border-top:1px solid var(--border-light);background:var(--bg-main);border-radius:0 0 12px 12px;text-align:center;color:var(--text-muted);font-size:0.9rem">
+                        This ticket has been closed.
+                    </div>
+                    `}
+                `;
+                detailArea.innerHTML = html;
+                const chat = document.getElementById('ticketChat');
+                chat.scrollTop = chat.scrollHeight;
+            } catch (e) { detailArea.innerHTML = `<div style="padding:20px;color:red">${e.message}</div>`; }
+        }
+
+        async function replyTicket(ticket_id) {
+            const input = document.getElementById('tReplyInput');
+            const message = input.value.trim();
+            if(!message) return;
+            try {
+                await api(`/api/tickets/${ticket_id}/messages`, { method: 'POST', body: { message } });
+                input.value = '';
+                // re-render the active ticket
+                // We don't have the subject/status easily here unless we pass it, so we'll just reload the whole view for simplicity
+                navigate('tickets');
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
+        async function closeTicket(ticket_id) {
+            if(!confirm("Mark this ticket as resolved and closed?")) return;
+            try {
+                await api(`/api/tickets/${ticket_id}/close`, { method: 'POST' });
+                showToast("Ticket closed");
+                navigate('tickets');
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
+        // ── CREDIT CARDS ──
+        async function renderCreditCards(el) {
+            el.innerHTML = `
+                <div class="page-header">
+                    <h2>Credit Cards</h2>
+                    <p>Manage your credit cards, view balances, and make payments</p>
+                </div>
+                <button class="btn btn-success" onclick="showApplyCardModal()" style="margin-bottom:16px">+ Apply for Credit Card</button>
+                <div id="cardsGrid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(320px, 1fr));gap:20px;margin-bottom:24px">
+                    Loading cards...
+                </div>
+            `;
+            
+            try {
+                const cards = await api('/api/credit_cards');
+                const grid = document.getElementById('cardsGrid');
+                
+                if (!cards.length) {
+                    grid.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text-muted);grid-column:1/-1;border:1px dashed var(--border-light);border-radius:12px">No credit cards found.<br/>Apply for one above to get started.</div>`;
+                    return;
+                }
+                
+                grid.innerHTML = cards.map(c => {
+                    const available = c.credit_limit - c.current_balance;
+                    const pct = Math.min(100, (c.current_balance / c.credit_limit) * 100);
+                    return `
+                    <div style="background:linear-gradient(135deg, #0f172a, #1e293b);border-radius:16px;padding:24px;color:white;position:relative;overflow:hidden;box-shadow:0 10px 25px -5px rgba(0,0,0,0.2)">
+                        <div style="position:absolute;top:-20px;right:-20px;width:150px;height:150px;background:radial-gradient(circle, rgba(20,184,166,0.15) 0%, transparent 70%);border-radius:50%"></div>
+                        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px">
+                            <div style="font-weight:600;letter-spacing:1px;color:#94a3b8">APEX TRUST</div>
+                            <svg width="32" height="24" viewBox="0 0 32 24" fill="none"><rect width="32" height="24" rx="4" fill="#cbd5e1" fill-opacity="0.2"/><circle cx="10" cy="12" r="6" fill="#ef4444" fill-opacity="0.8"/><circle cx="22" cy="12" r="6" fill="#f59e0b" fill-opacity="0.8"/></svg>
+                        </div>
+                        <div style="font-family:monospace;font-size:1.2rem;letter-spacing:2px;margin-bottom:16px">
+                            **** **** **** ${c.card_number.slice(-4)}
+                        </div>
+                        <div style="display:flex;justify-content:space-between;margin-bottom:20px">
+                            <div>
+                                <div style="font-size:0.7rem;color:#94a3b8;text-transform:uppercase;margin-bottom:4px">Current Balance</div>
+                                <div style="font-weight:600;font-size:1.1rem">${formatCurrency(c.current_balance)}</div>
+                            </div>
+                            <div style="text-align:right">
+                                <div style="font-size:0.7rem;color:#94a3b8;text-transform:uppercase;margin-bottom:4px">Available Limit</div>
+                                <div style="font-weight:600;font-size:1.1rem">${formatCurrency(available)}</div>
+                            </div>
+                        </div>
+                        <div style="width:100%;height:4px;background:rgba(255,255,255,0.1);border-radius:2px;margin-bottom:16px;overflow:hidden">
+                            <div style="height:100%;width:${pct}%;background:${pct > 80 ? '#ef4444' : pct > 50 ? '#f59e0b' : '#10b981'};border-radius:2px"></div>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;align-items:center">
+                            <div style="font-size:0.8rem;color:#94a3b8">APR: ${c.apr}%</div>
+                            ${c.current_balance > 0 ? `<button class="btn btn-sm btn-primary" onclick="showPayCardModal(${c.card_id}, ${c.current_balance})">Pay Bill</button>` : `<span style="font-size:0.8rem;color:#10b981;font-weight:500">Fully Paid</span>`}
+                        </div>
+                    </div>
+                `}).join('');
+                
+            } catch (e) { document.getElementById('cardsGrid').innerHTML = `Error: ${e.message}`; }
+        }
+
+        async function showApplyCardModal() {
+            try {
+                const accounts = await api('/api/accounts');
+                const checkingSavings = accounts.filter(a => a.is_active && (a.account_type === 'checking' || a.account_type === 'savings'));
+                
+                if (!checkingSavings.length) {
+                    showToast('You need an active checking or savings account to apply for a card.', 'error');
+                    return;
+                }
+
+                document.getElementById('modalContent').innerHTML = `
+                    <h3 style="margin-bottom:16px">Apply for Credit Card</h3>
+                    <div class="form-group">
+                        <label>Linked Account</label>
+                        <select id="ccApplyAccount" class="form-input" style="width:100%">
+                            ${checkingSavings.map(a => `<option value="${a.account_id}">${a.account_type} #${a.account_id} (${formatCurrency(a.balance)})</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Requested Credit Limit (₹)</label>
+                        <input type="number" id="ccApplyLimit" class="form-input" style="width:100%" placeholder="e.g. 50000" min="5000" step="1000">
+                    </div>
+                    <button class="btn btn-success" onclick="doApplyCard()" style="width:100%">Submit Application</button>
+                    <button class="btn btn-ghost" onclick="closeModal()" style="width:100%;margin-top:8px">Cancel</button>
+                `;
+                document.getElementById('modalOverlay').classList.add('visible');
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
+        async function doApplyCard() {
+            const accId = document.getElementById('ccApplyAccount').value;
+            const limit = document.getElementById('ccApplyLimit').value;
+            if(!limit || limit < 5000) {
+                showToast('Minimum limit request is ₹5,000', 'error');
+                return;
+            }
+            try {
+                const res = await api('/api/credit_cards/apply', { 
+                    method: 'POST', 
+                    body: { account_id: +accId, limit_requested: +limit } 
+                });
+                closeModal();
+                showToast(res.message || 'Application submitted');
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
+        async function showPayCardModal(cardId, currentBal) {
+            try {
+                const accounts = await api('/api/accounts');
+                const active = accounts.filter(a => a.is_active && a.balance > 0);
+                
+                if (!active.length) {
+                    showToast('No active accounts with sufficient balance to pay bills.', 'error');
+                    return;
+                }
+
+                document.getElementById('modalContent').innerHTML = `
+                    <h3 style="margin-bottom:16px">Pay Credit Card Bill</h3>
+                    <div style="background:var(--bg-card);padding:15px;border-radius:8px;margin-bottom:20px;border:1px solid var(--border-light)">
+                        <div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:4px">Outstanding Balance</div>
+                        <div style="font-size:1.4rem;font-weight:700;color:var(--text-main)">${formatCurrency(currentBal)}</div>
+                    </div>
+                    <div class="form-group">
+                        <label>Pay From Account</label>
+                        <select id="ccPayAccount" class="form-input" style="width:100%">
+                            ${active.map(a => `<option value="${a.account_id}">${a.account_type.toUpperCase()} #${String(a.account_id).padStart(6, '0')} (Bal: ${formatCurrency(a.balance)})</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Payment Amount (₹)</label>
+                        <input type="number" id="ccPayAmount" class="form-input" style="width:100%" value="${currentBal}" max="${currentBal}">
+                        <div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;display:flex;gap:10px">
+                            <span style="cursor:pointer;color:var(--accent-cyan);text-decoration:underline" onclick="document.getElementById('ccPayAmount').value=${currentBal}">Full Balance</span>
+                            <span style="cursor:pointer;color:var(--accent-cyan);text-decoration:underline" onclick="document.getElementById('ccPayAmount').value=${Math.max(500, Math.round(currentBal * 0.05))}">Min Due (5%)</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="doPayCard(${cardId})" style="width:100%">Confirm Payment</button>
+                    <button class="btn btn-ghost" onclick="closeModal()" style="width:100%;margin-top:8px">Cancel</button>
+                `;
+                document.getElementById('modalOverlay').classList.add('visible');
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
+        async function doPayCard(cardId) {
+            const accId = document.getElementById('ccPayAccount').value;
+            const amount = document.getElementById('ccPayAmount').value;
+            if(!amount || amount <= 0) {
+                showToast('Please enter a valid amount', 'error');
+                return;
+            }
+            try {
+                const res = await api('/api/credit_cards/pay', { 
+                    method: 'POST', 
+                    body: { account_id: +accId, card_id: cardId, amount: +amount } 
+                });
+                closeModal();
+                showToast(`Payment successful! New card balance: ${formatCurrency(res.new_card_balance)}`);
+                navigate('creditcards');
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
         // ── Check session on load ──
         (async () => {
             try {
@@ -1658,6 +2483,9 @@
                 fetchNotifs(); // Fetch at start
             } catch (e) {
                 // Not logged in
+            }
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
             }
         })();
     </script>

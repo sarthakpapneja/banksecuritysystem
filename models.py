@@ -48,8 +48,15 @@ class User:
     password_hash: str
     role: Role
     full_name: str
+    email: str = ""
+    phone: str = ""
+    address: str = ""
+    qr_code_b64: str = ""
+    avatar_b64: str = ""
     created_at: datetime = field(default_factory=datetime.now)
     is_active: bool = True
+    is_locked: bool = False
+    failed_attempts: int = 0
 
 
 @dataclass
@@ -115,3 +122,34 @@ class BranchInfo:
     branch_name: str
     location: str
     manager_id: Optional[int] = None
+
+
+@dataclass
+class SupportTicket:
+    ticket_id: int
+    user_id: int
+    subject: str
+    status: str = "open"
+    created_at: datetime = field(default_factory=datetime.now)
+    updated_at: datetime = field(default_factory=datetime.now)
+
+
+@dataclass
+class TicketMessage:
+    message_id: int
+    ticket_id: int
+    sender_user_id: int
+    message: str
+    created_at: datetime = field(default_factory=datetime.now)
+
+
+@dataclass
+class CreditCard:
+    card_id: int
+    account_id: int
+    card_number: str
+    credit_limit: float
+    current_balance: float = 0.0
+    apr: float = 15.0
+    due_date: Optional[str] = None
+    status: str = "active"
