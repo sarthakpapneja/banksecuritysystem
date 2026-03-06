@@ -275,7 +275,9 @@
         async function renderOverview(el) {
             el.innerHTML = `
         <div class="page-header"><h2>Dashboard Overview</h2><p>Welcome back, ${currentUser.full_name}</p></div>
-        <div class="stats-grid" id="overviewStats">Loading...</div>
+        <div class="stats-grid" id="overviewStats"></div>
+        <div id="quickActionsArea"></div>
+        <div id="accountCardsArea"></div>
         <div class="table-card" id="overviewTable"></div>
     `;
 
@@ -283,28 +285,69 @@
             const statsEl = document.getElementById('overviewStats');
 
             if (currentUser.role === 'customer') {
-                const total = accounts.reduce((s, a) => s + a.balance, 0);
+                const active = accounts.filter(a => a.is_active);
+                const total = active.reduce((s, a) => s + a.balance, 0);
                 statsEl.innerHTML = `
-            <div class="stat-card blue"><div class="stat-icon">💳</div><div class="stat-value">${accounts.length}</div><div class="stat-label">Accounts</div></div>
+            <div class="stat-card blue"><div class="stat-icon">💳</div><div class="stat-value">${active.length}</div><div class="stat-label">Active Accounts</div></div>
             <div class="stat-card green"><div class="stat-icon">💰</div><div class="stat-value">${formatCurrency(total)}</div><div class="stat-label">Total Balance</div></div>
         `;
-                // Recent txns
-                if (accounts.length > 0) {
-                    const txns = await api(`/api/accounts/${accounts[0].account_id}/transactions`);
-                    renderTransactionTable(document.getElementById('overviewTable'), txns.slice(0, 5), 'Recent Transactions');
+                // Quick actions
+                document.getElementById('quickActionsArea').innerHTML = `
+            <div class="quick-actions">
+                <button class="btn btn-success" onclick="navigate('deposit')">💵 Deposit</button>
+                <button class="btn btn-danger" onclick="navigate('withdraw')">🏧 Withdraw</button>
+                <button class="btn btn-primary" onclick="navigate('transfer')">🔄 Transfer</button>
+            </div>
+        `;
+                // Account cards
+                if (active.length > 0) {
+                    document.getElementById('accountCardsArea').innerHTML = `
+                <div class="account-cards">${active.map(a => `
+                    <div class="table-card" style="cursor:pointer" onclick="showTransactions(${a.account_id})">
+                        <div style="padding:20px">
+                            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
+                                <div>
+                                    <div style="font-size:0.72rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em">${a.account_type} Account</div>
+                                    <div style="font-size:0.85rem;color:var(--text-secondary);margin-top:2px">${a.customer_name}</div>
+                                </div>
+                                <span class="badge badge-green">Active</span>
+                            </div>
+                            <div style="font-size:1.4rem;font-weight:700;color:var(--text-primary)">${formatCurrency(a.balance)}</div>
+                            <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px">Account #${a.account_id} · Click to view transactions</div>
+                        </div>
+                    </div>
+                `).join('')}</div>
+            `;
+                }
+                // Recent txns from all accounts
+                if (active.length > 0) {
+                    let allTxns = [];
+                    for (const acc of active.slice(0, 3)) {
+                        try { const txns = await api(`/api/accounts/${acc.account_id}/transactions`); allTxns = allTxns.concat(txns); } catch (e) { }
+                    }
+                    allTxns.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                    renderTransactionTable(document.getElementById('overviewTable'), allTxns.slice(0, 8), 'Recent Transactions');
                 }
             } else {
                 const totalBal = accounts.reduce((s, a) => s + a.balance, 0);
+                const active = accounts.filter(a => a.is_active).length;
                 statsEl.innerHTML = `
             <div class="stat-card blue"><div class="stat-icon">🏦</div><div class="stat-value">${accounts.length}</div><div class="stat-label">Total Accounts</div></div>
             <div class="stat-card green"><div class="stat-icon">💰</div><div class="stat-value">${formatCurrency(totalBal)}</div><div class="stat-label">Total Balance</div></div>
+            <div class="stat-card gold"><div class="stat-icon">✅</div><div class="stat-value">${active}</div><div class="stat-label">Active Accounts</div></div>
         `;
                 if (currentUser.role === 'manager') {
                     try {
                         const r = await api('/api/report');
                         statsEl.innerHTML += `
-                    <div class="stat-card gold"><div class="stat-icon">📋</div><div class="stat-value">${r.pending_requests}</div><div class="stat-label">Pending Requests</div></div>
-                    <div class="stat-card red"><div class="stat-icon">👤</div><div class="stat-value">${r.user_count}</div><div class="stat-label">Active Users</div></div>
+                    <div class="stat-card red"><div class="stat-icon">📋</div><div class="stat-value">${r.pending_requests}</div><div class="stat-label">Pending Requests</div></div>
+                `;
+                        document.getElementById('quickActionsArea').innerHTML = `
+                    <div class="stats-grid" style="margin-bottom:24px">
+                        <div class="stat-card blue"><div class="stat-icon">👤</div><div class="stat-value">${r.user_count}</div><div class="stat-label">Active Users</div></div>
+                        <div class="stat-card green"><div class="stat-icon">📥</div><div class="stat-value">${formatCurrency(r.total_deposits)}</div><div class="stat-label">Total Deposits</div></div>
+                        <div class="stat-card red"><div class="stat-icon">📤</div><div class="stat-value">${formatCurrency(r.total_withdrawals)}</div><div class="stat-label">Total Withdrawals</div></div>
+                    </div>
                 `;
                     } catch (e) { }
                 } else {
