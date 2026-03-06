@@ -948,9 +948,64 @@
             window.open(`/api/transactions/${txnId}/receipt`, '_blank');
         }
 
-        // ── MINI STATEMENT ──
+        // ── STATEMENT WITH DATE RANGE ──
         function downloadStatement(accountId) {
-            window.open(`/api/accounts/${accountId}/statement`, '_blank');
+            const today = new Date().toISOString().split('T')[0];
+            const modal = document.getElementById('modalContent');
+            modal.style.maxWidth = '440px';
+            modal.innerHTML = `
+                <h3>Generate Statement</h3>
+                <p style="color:var(--text-muted);font-size:0.88rem;margin-bottom:16px">Account #${accountId} — Select a time period</p>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px">
+                    <button class="btn btn-sm btn-ghost" onclick="setStatementPeriod(7)">Last 7 days</button>
+                    <button class="btn btn-sm btn-ghost" onclick="setStatementPeriod(30)">Last 30 days</button>
+                    <button class="btn btn-sm btn-ghost" onclick="setStatementPeriod(90)">Last 90 days</button>
+                    <button class="btn btn-sm btn-ghost" onclick="setStatementPeriod('month')">This Month</button>
+                    <button class="btn btn-sm btn-ghost" onclick="setStatementPeriod(0)">All Time</button>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
+                    <div>
+                        <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--text-muted);margin-bottom:4px">FROM</label>
+                        <input type="date" id="stmtStart" class="form-input" style="width:100%" max="${today}">
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--text-muted);margin-bottom:4px">TO</label>
+                        <input type="date" id="stmtEnd" class="form-input" style="width:100%" value="${today}" max="${today}">
+                    </div>
+                </div>
+                <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end">
+                    <button class="btn btn-sm btn-ghost" onclick="closeModal()">Cancel</button>
+                    <button class="btn btn-sm btn-primary" onclick="openStatement(${accountId})">Generate Statement</button>
+                </div>
+            `;
+            document.getElementById('modalOverlay').classList.add('visible');
+        }
+
+        function setStatementPeriod(period) {
+            const today = new Date();
+            const endStr = today.toISOString().split('T')[0];
+            let startStr = '';
+            if (period === 'month') {
+                startStr = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+            } else if (period > 0) {
+                const d = new Date(today);
+                d.setDate(d.getDate() - period);
+                startStr = d.toISOString().split('T')[0];
+            }
+            document.getElementById('stmtStart').value = startStr;
+            document.getElementById('stmtEnd').value = endStr;
+        }
+
+        function openStatement(accountId) {
+            const start = document.getElementById('stmtStart').value;
+            const end = document.getElementById('stmtEnd').value;
+            let url = `/api/accounts/${accountId}/statement`;
+            const params = [];
+            if (start) params.push(`start=${start}`);
+            if (end) params.push(`end=${end}`);
+            if (params.length) url += '?' + params.join('&');
+            window.open(url, '_blank');
+            closeModal();
         }
 
         // ── UNLOCK USER ──

@@ -620,8 +620,26 @@ def api_mini_statement(account_id):
     if user["role"] == "customer" and account["user_id"] != user["user_id"]:
         return jsonify({"error": "Access denied"}), 403
 
-    txns = db_manager.get_transactions_by_account(account_id, limit=20)
+    start_date = request.args.get("start", "")
+    end_date = request.args.get("end", "")
+
+    txns = db_manager.get_transactions_by_account(account_id, limit=200)
+
+    # Filter by date range if provided
+    if start_date:
+        txns = [t for t in txns if t["timestamp"][:10] >= start_date]
+    if end_date:
+        txns = [t for t in txns if t["timestamp"][:10] <= end_date]
+
     now = datetime.now().strftime("%d-%b-%Y %I:%M %p")
+    if start_date and end_date:
+        period_label = f"Period: {start_date} to {end_date}"
+    elif start_date:
+        period_label = f"From: {start_date}"
+    elif end_date:
+        period_label = f"Until: {end_date}"
+    else:
+        period_label = "Recent Transactions"
 
     rows = ""
     for t in txns:
@@ -663,6 +681,7 @@ def api_mini_statement(account_id):
       <img src="{LOGO_B64}" alt="Apex Trust Bank">
       <h1>Apex Trust Bank</h1>
       <p class="subtitle">Account Statement</p>
+      <p class="subtitle">{period_label}</p>
       <p class="subtitle">Generated on {now}</p>
     </div>
     <div class="info-grid">
