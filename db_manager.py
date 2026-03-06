@@ -818,8 +818,6 @@ def update_loan_status(loan_id: int, status: str, approved_by: str, accountant_s
     )
     conn.commit()
     conn.close()
-    conn.commit()
-    conn.close()
 
 
 def make_emi_payment(loan_id: int, amount: float):
