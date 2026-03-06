@@ -61,6 +61,25 @@
                 <img src="/static/logo.png" alt="Logo" class="topbar-logo-img"><span class="logo">Apex Trust Bank</span>
             </div>
             <div class="topbar-right">
+                <!-- Notification Bell -->
+                <div class="notif-wrapper">
+                    <button class="notif-bell" id="notifBell" onclick="toggleNotifDropdown(event)">
+                        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
+                            viewBox="0 0 24 24">
+                            <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" />
+                        </svg>
+                        <div class="notif-badge" id="notifBadge" style="display:none">0</div>
+                    </button>
+                    <div class="notif-dropdown" id="notifDropdown">
+                        <div class="notif-dropdown-header">
+                            <span>Notifications</span>
+                            <button onclick="markAllNotifsRead()">Mark all as read</button>
+                        </div>
+                        <div class="notif-list" id="notifList">
+                            <!-- Populated dynamically -->
+                        </div>
+                    </div>
+                </div>
                 <div class="user-badge" id="userBadge">
                     <div class="avatar" id="userAvatar"></div>
                     <div class="info">
@@ -89,6 +108,9 @@
     <div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
         <div class="modal" id="modalContent" onclick="event.stopPropagation()"></div>
     </div>
+
+    <!-- Hidden File Input for QR -->
+    <input type="file" id="qrInput" accept="image/*" style="display:none" onchange="handleQrUpload(event)">
 
     <script>
         // ═══════════════════════════════════════════
@@ -197,6 +219,9 @@
             syslog: '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M4 8l4 4-4 4"/><path d="M12 20h9"/></svg>',
             audit: '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>',
             createacc: '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>',
+            quickpay: '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>',
+            loans: '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M3 21h18M3 10h18M5 10V7a2 2 0 012-2h10a2 2 0 012 2v3M7 21v-4M12 21v-4M17 21v-4M12 5V2"/></svg>',
+            notifs: '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/></svg>',
         };
         const NAV = {
             customer: [
@@ -205,6 +230,11 @@
                 { id: 'deposit', icon: ICONS.deposit, label: 'Deposit' },
                 { id: 'withdraw', icon: ICONS.withdraw, label: 'Withdraw' },
                 { id: 'transfer', icon: ICONS.transfer, label: 'Transfer' },
+                { id: 'quick-pay', icon: ICONS.quickpay, label: 'Quick Pay' },
+                { id: 'loans', icon: ICONS.loans, label: 'My Loans' },
+                { id: 'notifications', icon: ICONS.notifs, label: 'Notifications' },
+                { section: 'Reports' },
+                { id: 'audit', icon: ICONS.audit, label: 'Activity Logs' },
                 { section: 'Settings' },
                 { id: 'profile', icon: ICONS.profile, label: 'My Profile' },
                 { id: 'change-password', icon: ICONS.password, label: 'Change Password' },
@@ -213,6 +243,7 @@
                 { id: 'overview', icon: ICONS.overview, label: 'Overview' },
                 { id: 'accounts', icon: ICONS.accounts, label: 'All Accounts' },
                 { id: 'requests', icon: ICONS.requests, label: 'Pending Requests' },
+                { id: 'loan-requests', icon: ICONS.loans, label: 'Loan Apps' },
                 { id: 'all-txns', icon: ICONS.txns, label: 'All Transactions' },
                 { id: 'audit-log', icon: ICONS.audit, label: 'Audit Log' },
                 { section: 'Account Management' },
@@ -226,10 +257,12 @@
                 { id: 'report', icon: ICONS.report, label: 'Bank Report' },
                 { id: 'users', icon: ICONS.users, label: 'Manage Users' },
                 { id: 'branches', icon: ICONS.branches, label: 'Branches' },
+                { id: 'loan-requests', icon: ICONS.loans, label: 'Loan Apps' },
                 { section: 'Operations' },
                 { id: 'accounts', icon: ICONS.accounts, label: 'All Accounts' },
                 { id: 'requests', icon: ICONS.requests, label: 'Pending Requests' },
                 { id: 'all-txns', icon: ICONS.txns, label: 'All Transactions' },
+                { id: 'notifications', icon: ICONS.notifs, label: 'Notifications' },
                 { section: 'Logs' },
                 { id: 'system-logs', icon: ICONS.syslog, label: 'System Logs' },
                 { id: 'audit-log', icon: ICONS.audit, label: 'Audit Log' },
@@ -280,6 +313,63 @@
             else content.innerHTML = `<div class="empty-state"><div class="icon">—</div><p>Page not found</p></div>`;
         }
 
+        // ── NOTIFICATIONS LOGIC ──
+        let notifs = [];
+
+        async function fetchNotifs() {
+            try {
+                notifs = await api('/api/notifications');
+                const u = await api('/api/notifications/unread-count');
+                updateNotifUI(u.count);
+            } catch (e) { console.error("Notif fetch failed", e); }
+        }
+
+        function updateNotifUI(unreadCount) {
+            const badge = document.getElementById('notifBadge');
+            if (unreadCount > 0) {
+                badge.textContent = unreadCount > 9 ? '9+' : unreadCount;
+                badge.style.display = 'flex';
+            } else {
+                badge.style.display = 'none';
+            }
+            const list = document.getElementById('notifList');
+            if (!notifs.length) {
+                list.innerHTML = '<div class="notif-empty">No notifications yet</div>';
+                return;
+            }
+            list.innerHTML = notifs.map(n => `
+                <div class="notif-item ${n.is_read ? '' : 'unread'}" onclick="markNotifRead(${n.notif_id})">
+                    <div class="notif-icon ${n.type || 'info'}">${n.type === 'success' ? '✓' : n.type === 'warning' ? '!' : 'i'}</div>
+                    <div class="notif-body">
+                        <p>${n.message}</p>
+                        <div class="notif-time">${n.created_at}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function markNotifRead(id) {
+            await api(`/api/notifications/${id}/read`, { method: 'POST' });
+            fetchNotifs();
+        }
+
+        async function markAllNotifsRead() {
+            await api('/api/notifications/read-all', { method: 'POST' });
+            fetchNotifs();
+        }
+
+        function toggleNotifDropdown(e) {
+            e.stopPropagation();
+            document.getElementById('notifDropdown').classList.toggle('visible');
+        }
+
+        window.onclick = () => {
+            document.getElementById('notifDropdown').classList.remove('visible');
+        };
+
+        // Poll every 30s
+        setInterval(fetchNotifs, 30000);
+
         // ═══════════════════════════════════════════
         // PAGE RENDERERS
         // ═══════════════════════════════════════════
@@ -291,6 +381,7 @@
             transfer: renderTransfer,
             requests: renderRequests,
             'all-txns': renderAllTransactions,
+            'audit': renderAudit,
             'audit-log': renderAuditLog,
             'create-account': renderCreateAccount,
             report: renderReport,
@@ -299,6 +390,10 @@
             'profile': renderProfile,
             'change-password': renderChangePassword,
             'branches': renderBranches,
+            'notifications': renderNotificationsPage,
+            'quick-pay': renderQuickPay,
+            'loans': renderLoans,
+            'loan-requests': renderLoanRequests,
         };
 
         // ── OVERVIEW ──
@@ -423,7 +518,11 @@
                     <td><span class="badge badge-blue">${a.account_type}</span></td>
                     <td class="amount-positive">${formatCurrency(a.balance)}</td>
                     <td>${a.is_active ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Closed</span>'}</td>
-                    <td><button class="btn btn-sm btn-ghost" onclick="showTransactions(${a.account_id})">View Txns</button><button class="btn btn-sm" onclick="downloadStatement(${a.account_id})" style="margin-left:4px" title="Download Statement"> Statement</button></td>
+                    <td>
+                        <button class="btn btn-sm btn-ghost" onclick="showTransactions(${a.account_id})">View Txns</button>
+                        ${isCustomer ? `<button class="btn btn-sm btn-ghost" onclick="manageQr(${a.account_id})" style="margin-left:4px">QR Code</button>` : ''}
+                        <button class="btn btn-sm" onclick="downloadStatement(${a.account_id})" style="margin-left:4px" title="Download Statement">Statement</button>
+                    </td>
                 </tr>
             `).join('')}</tbody>
         </table>
@@ -538,37 +637,79 @@
             const activeAccounts = accounts.filter(a => a.is_active);
             if (!activeAccounts.length) {
                 el.innerHTML = `
-            <div class="page-header"><h2>Transfer</h2><p>Transfer funds between accounts</p></div>
-            <div class="empty-state"><div class="icon">—</div><p>No accounts found</p><p style="font-size:0.9rem;color:var(--text-muted)">Contact an accountant to create a bank account first.</p></div>
+            <div class="page-header"><h2>Transfer Funds</h2><p>Send money to another account</p></div>
+            <div class="empty-state"><div class="icon">—</div><p>No accounts found</p></div>
         `;
                 return;
             }
             el.innerHTML = `
-        <div class="page-header"><h2>Transfer</h2><p>Transfer funds between accounts</p></div>
+        <div class="page-header"><h2>Transfer Funds</h2><p>Send money to another account</p></div>
         <div class="modal" style="max-width:480px">
             <div class="form-group"><label>From Account</label>
-                <select id="txfrFrom">${activeAccounts.map(a => `<option value="${a.account_id}">#${a.account_id} — ${a.account_type.toUpperCase()} (${formatCurrency(a.balance)})</option>`).join('')}</select>
+                <select id="fromAccount">${activeAccounts.map(a => `<option value="${a.account_id}">#${a.account_id} — ${a.account_type.toUpperCase()} (${formatCurrency(a.balance)})</option>`).join('')}</select>
             </div>
-            <div class="form-group"><label>To Account #</label><input type="number" id="txfrTo" min="1" placeholder="Destination account ID"></div>
-            <div class="form-group"><label>Amount (₹)</label><input type="number" id="txfrAmt" min="1" step="0.01" placeholder="Enter amount"></div>
-            <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:16px"> Transfers ≥ ₹5,000 require accountant approval</p>
-            <button class="btn btn-primary" onclick="doTransfer()" style="width:100%">Transfer</button>
+            <div class="form-group">
+                <label>Target Account ID</label>
+                <div style="display:flex;gap:8px">
+                    <input type="number" id="toAccount" placeholder="Recipient 6-digit Account ID" style="flex:1">
+                    <button class="btn btn-sm btn-ghost" onclick="viewRecipientQr()" title="View QR"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2M7 7h4v4H7V7zm6 0h4v4h-4V7zm0 6h4v4h-4v-4zm-6 0h4v4H7v-4z"/></svg></button>
+                </div>
+            </div>
+            <div class="form-group"><label>Amount (₹)</label><input type="number" id="transferAmt" min="1" step="0.01" placeholder="Enter amount"></div>
+            <div class="form-group" id="saveBenGroup" style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+                <input type="checkbox" id="saveBen" style="width:auto;margin:0">
+                <label for="saveBen" style="margin:0;font-size:0.85rem;cursor:pointer">Save recipient as beneficiary</label>
+            </div>
+            <button class="btn btn-primary" onclick="confirmTransfer()" style="width:100%">Transfer Funds</button>
         </div>
     `;
         }
 
-        async function doTransfer() {
+        function confirmTransfer() {
+            const fromId = +document.getElementById('fromAccount').value;
+            const toId = +document.getElementById('toAccount').value;
+            const amount = +document.getElementById('transferAmt').value;
+            const saveBen = document.getElementById('saveBen').checked;
+
+            if (!toId || amount <= 0) { showToast('Please enter valid account ID and amount', 'error'); return; }
+            if (fromId === toId) { showToast('Source and destination accounts must be different', 'error'); return; }
+
+            const modal = document.getElementById('modalContent');
+            modal.innerHTML = `
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+                <div style="text-align:center;padding:10px">
+                    <div style="font-size:3rem;margin-bottom:20px">💸</div>
+                    <h3>Confirm Transfer</h3>
+                    <p style="margin:16px 0;font-size:0.95rem">Are you sure you want to send <strong style="font-size:1.2rem">${formatCurrency(amount)}</strong> to Account <strong style="font-size:1.2rem">#${toId}</strong>?</p>
+                    ${amount >= 50000 ? '<div class="alert alert-warning" style="margin-bottom:16px;font-size:0.85rem">Large transfer detected. This may require additional verification.</div>' : ''}
+                    <button class="btn btn-primary" onclick="doTransfer(${fromId}, ${toId}, ${amount}, ${saveBen})" style="width:100%">Confirm & Send</button>
+                    <button class="btn btn-ghost" onclick="closeModal()" style="width:100%;margin-top:8px">Cancel</button>
+                </div>
+            `;
+            document.getElementById('modalOverlay').classList.add('visible');
+        }
+
+        async function doTransfer(src, dst, amt, saveBen) {
             try {
                 const data = await api('/api/transfer', {
                     method: 'POST', body: {
-                        from_account_id: +document.getElementById('txfrFrom').value,
-                        to_account_id: +document.getElementById('txfrTo').value,
-                        amount: +document.getElementById('txfrAmt').value,
+                        src_id: src,
+                        dst_id: dst,
+                        amount: amt
                     }
                 });
-                if (data.pending) showToast(data.message, 'warning');
-                else showToast(`Transferred successfully! New balance: ${formatCurrency(data.new_balance)}`);
-                navigate('transfer');
+
+                if (saveBen) {
+                    try {
+                        await api('/api/beneficiaries', {
+                            method: 'POST', body: { name: `A/C #${dst}`, account_id: dst, nickname: 'Quick Transfer' }
+                        });
+                    } catch (e) { console.warn("Failed to save beneficiary", e); }
+                }
+
+                showToast(`Transfer successful! Transaction ID: ${data.txn_id || 'N/A'}`);
+                closeModal();
+                renderAccounts(document.getElementById('contentArea'));
             } catch (e) { showToast(e.message, 'error'); }
         }
 
@@ -847,8 +988,28 @@
                     <div class="form-group"><label>Phone</label><input type="tel" id="profPhone" value="${p.phone || ''}" placeholder="+91 xxxxxxxxxx"></div>
                     <div class="form-group"><label>Address</label><input type="text" id="profAddress" value="${p.address || ''}" placeholder="Your address"></div>
                     <button class="btn btn-primary" onclick="saveProfile()" style="width:100%">Save Profile</button>
+                    
+                    ${p.role === 'customer' ? `
+                        <div style="margin-top:24px; padding-top:20px; border-top:1px dashed var(--border)">
+                            <h4 style="margin-bottom:12px">Payment QR Codes</h4>
+                            <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:16px">Manage QR codes for your accounts to receive quick payments.</p>
+                            <div id="profileQrList" style="display:grid;gap:10px"></div>
+                        </div>
+                    ` : ''}
                 </div>
             `;
+            if (p.role === 'customer') {
+                const accounts = await api('/api/accounts');
+                document.getElementById('profileQrList').innerHTML = accounts.filter(a => a.is_active).map(a => `
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:var(--bg-secondary);border-radius:8px">
+                        <div>
+                            <div style="font-weight:600;font-size:0.9rem">Account #${a.account_id}</div>
+                            <div style="font-size:0.75rem;color:var(--text-muted)">${a.account_type.toUpperCase()}</div>
+                        </div>
+                        <button class="btn btn-sm btn-ghost" onclick="manageQr(${a.account_id})">Manage QR</button>
+                    </div>
+                `).join('');
+            }
         }
         async function saveProfile() {
             try {
@@ -864,12 +1025,43 @@
         }
 
         // ── CHANGE PASSWORD ──
+        function calcPasswordStrength(pw) {
+            let score = 0;
+            if (pw.length >= 4) score++;
+            if (pw.length >= 8) score++;
+            if (pw.length >= 12) score++;
+            if (/[a-z]/.test(pw)) score++;
+            if (/[A-Z]/.test(pw)) score++;
+            if (/[0-9]/.test(pw)) score++;
+            if (/[^a-zA-Z0-9]/.test(pw)) score++;
+            if (score <= 2) return { level: 1, label: 'Weak', color: '#ef4444' };
+            if (score <= 4) return { level: 2, label: 'Fair', color: '#f59e0b' };
+            if (score <= 5) return { level: 3, label: 'Good', color: '#3b82f6' };
+            return { level: 4, label: 'Strong', color: '#10b981' };
+        }
+
+        function updateStrengthMeter() {
+            const pw = document.getElementById('cpNew').value;
+            const bar = document.getElementById('strengthBar');
+            const txt = document.getElementById('strengthText');
+            if (!pw) { bar.style.width = '0%'; bar.style.background = '#e2e8f0'; txt.textContent = ''; return; }
+            const s = calcPasswordStrength(pw);
+            bar.style.width = (s.level * 25) + '%';
+            bar.style.background = s.color;
+            txt.textContent = s.label;
+            txt.style.color = s.color;
+        }
+
         async function renderChangePassword(el) {
             el.innerHTML = `
                 <div class="page-header"><h2>Change Password</h2><p>Update your account password</p></div>
                 <div class="modal" style="max-width:420px">
                     <div class="form-group"><label>Current Password</label><input type="password" id="cpOld" placeholder="Enter current password"></div>
-                    <div class="form-group"><label>New Password</label><input type="password" id="cpNew" placeholder="Enter new password (min 4 chars)"></div>
+                    <div class="form-group"><label>New Password</label><input type="password" id="cpNew" placeholder="Enter new password (min 4 chars)" oninput="updateStrengthMeter()"></div>
+                    <div class="password-strength-container">
+                        <div class="password-strength-track"><div class="password-strength-bar" id="strengthBar"></div></div>
+                        <span class="password-strength-text" id="strengthText"></span>
+                    </div>
                     <div class="form-group"><label>Confirm New Password</label><input type="password" id="cpConfirm" placeholder="Re-enter new password"></div>
                     <button class="btn btn-primary" onclick="doChangePassword()" style="width:100%">Change Password</button>
                 </div>
@@ -1008,6 +1200,311 @@
             closeModal();
         }
 
+        // ── NOTIFICATIONS PAGE ──
+        async function renderNotificationsPage(el) {
+            await fetchNotifs();
+            el.innerHTML = `
+                <div class="page-header">
+                    <div><h2>Notifications</h2><p>Stay updated with your account activity</p></div>
+                    <button class="btn btn-sm btn-ghost" onclick="markAllNotifsRead()">Mark all as read</button>
+                </div>
+                <div class="table-card" style="padding:0">
+                    ${notifs.length ? notifs.map(n => `
+                        <div class="notif-item ${n.is_read ? '' : 'unread'}" style="border-bottom:1px solid var(--border); padding:16px 20px" onclick="markNotifRead(${n.notif_id})">
+                            <div class="notif-icon ${n.type || 'info'}">${n.type === 'success' ? '✓' : n.type === 'warning' ? '!' : 'i'}</div>
+                            <div class="notif-body">
+                                <p style="font-size:0.95rem">${n.message}</p>
+                                <div class="notif-time">${n.created_at}</div>
+                            </div>
+                        </div>
+                    `).join('') : '<div class="notif-empty">No notifications yet</div>'}
+                </div>
+            `;
+        }
+
+        // ── QUICK PAY & BENEFICIARIES ──
+        async function renderQuickPay(el) {
+            const bens = await api('/api/beneficiaries');
+            el.innerHTML = `
+                <div class="page-header"><h2>Quick Pay</h2><p>Fast transfers to saved beneficiaries</p></div>
+                <div class="ben-grid">
+                    <div class="ben-card ben-add-card" onclick="openAddBeneficiary()">
+                        <div style="font-size:1.5rem">+</div>
+                        <div>Add Beneficiary</div>
+                    </div>
+                    ${bens.map(b => `
+                        <div class="ben-card" onclick="openQuickTransfer(${b.account_id}, '${b.name}')">
+                            <button class="ben-delete" onclick="deleteBeneficiary(event, ${b.ben_id})">&times;</button>
+                            <div class="ben-avatar">${b.name.split(' ').map(n => n[0]).join('')}</div>
+                            <div class="ben-name">${b.name}</div>
+                            <div class="ben-acct">#${b.account_id}</div>
+                            ${b.nickname ? `<div style="font-size:0.7rem;color:var(--primary-600);font-weight:600;margin-top:4px">${b.nickname}</div>` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function openAddBeneficiary() {
+            const modal = document.getElementById('modalContent');
+            modal.innerHTML = `
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+                <h3>Add Beneficiary</h3>
+                <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:20px">Save an account for quick transfers.</p>
+                <div class="form-group"><label>Beneficiary Name</label><input type="text" id="benName" placeholder="Full Name"></div>
+                <div class="form-group"><label>Account Number</label><input type="number" id="benAcct" placeholder="6-digit ID"></div>
+                <div class="form-group"><label>Nickname (Optional)</label><input type="text" id="benNick" placeholder="e.g. My Savings"></div>
+                <button class="btn btn-primary" onclick="doAddBeneficiary()" style="width:100%;margin-top:10px">Save Beneficiary</button>
+            `;
+            document.getElementById('modalOverlay').classList.add('visible');
+        }
+
+        async function doAddBeneficiary() {
+            try {
+                await api('/api/beneficiaries', {
+                    method: 'POST', body: {
+                        name: document.getElementById('benName').value,
+                        account_id: +document.getElementById('benAcct').value,
+                        nickname: document.getElementById('benNick').value
+                    }
+                });
+                showToast('Beneficiary added!');
+                closeModal();
+                renderQuickPay(document.getElementById('contentArea'));
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
+        async function deleteBeneficiary(e, id) {
+            e.stopPropagation();
+            if (!confirm('Remove this beneficiary?')) return;
+            try {
+                await api(`/api/beneficiaries/${id}`, { method: 'DELETE' });
+                showToast('Beneficiary removed');
+                renderQuickPay(document.getElementById('contentArea'));
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
+        function openQuickTransfer(toId, toName) {
+            renderTransfer(document.getElementById('contentArea'));
+            // Small delay to ensure render is done
+            setTimeout(() => {
+                document.getElementById('toAccount').value = toId;
+                document.getElementById('transferAmt').focus();
+            }, 50);
+        }
+
+        // ── LOANS ──
+        async function renderLoans(el) {
+            const loans = await api('/api/loans');
+            el.innerHTML = `
+                <div class="page-header">
+                    <div><h2>My Loans</h2><p>Overview of your active and pending loans</p></div>
+                    <button class="btn btn-primary" onclick="openApplyLoan()">Apply for Loan</button>
+                </div>
+                ${loans.length ? loans.map(l => `
+                    <div class="loan-card">
+                        <div class="loan-header">
+                            <div><span class="badge badge-${l.status === 'active' ? 'green' : l.status === 'pending' ? 'yellow' : 'red'}">${l.status.toUpperCase()}</span>
+                            <span style="color:var(--text-muted);font-size:0.8rem;margin-left:8px">ID: LOAN${String(l.loan_id).padStart(6, '0')}</span></div>
+                            <div class="loan-amount">${formatCurrency(l.loan_amount)}</div>
+                        </div>
+                        <div class="loan-details">
+                            <div class="loan-detail-item"><div class="label">EMI</div><div class="value">${formatCurrency(l.emi_amount)}</div></div>
+                            <div class="loan-detail-item"><div class="label">Tenure</div><div class="value">${l.tenure_months} mo</div></div>
+                            <div class="loan-detail-item"><div class="label">Interest</div><div class="value">${l.interest_rate}%</div></div>
+                            <div class="loan-detail-item"><div class="label">Paid</div><div class="value">${formatCurrency(l.total_paid)}</div></div>
+                        </div>
+                        ${l.status === 'active' ? `
+                            <div style="margin-top:16px; text-align:right">
+                                <button class="btn btn-sm btn-success" onclick="payEmi(${l.loan_id})">Pay Next EMI</button>
+                            </div>
+                        ` : ''}
+                    </div>
+                `).join('') : '<div class="empty-state">No loans found</div>'}
+            `;
+        }
+
+        async function openApplyLoan() {
+            const accounts = await api('/api/accounts');
+            const activeAccs = accounts.filter(a => a.is_active);
+            const modal = document.getElementById('modalContent');
+            modal.innerHTML = `
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+                <h3>Apply for Loan</h3>
+                <div class="form-group"><label>Select Account for Disbursement</label>
+                    <select id="loanAcc">${activeAccs.map(a => `<option value="${a.account_id}">#${a.account_id} (${a.account_type})</option>`).join('')}</select>
+                </div>
+                <div class="form-group"><label>Loan Amount (₹)</label><input type="number" id="loanAmt" placeholder="e.g. 50000" oninput="calcLoanEmiUI()"></div>
+                <div class="form-group"><label>Tenure (Months)</label>
+                    <select id="loanTenure" onchange="calcLoanEmiUI()">
+                        <option value="6">6 Months</option><option value="12">12 Months</option>
+                        <option value="24">24 Months</option><option value="36">36 Months</option>
+                    </select>
+                </div>
+                <div id="emiCalcPanel" style="background:var(--bg-secondary);padding:14px;border-radius:8px;margin-bottom:16px;display:none">
+                    <div style="display:flex;justify-content:space-between"><span>Rate of Interest:</span><strong>10.5% p.a.</strong></div>
+                    <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:1.1rem"><span>Monthly EMI:</span><strong id="uiEmiVal">₹0.00</strong></div>
+                </div>
+                <button class="btn btn-primary" onclick="doApplyLoan()" style="width:100%">Submit Application</button>
+            `;
+            document.getElementById('modalOverlay').classList.add('visible');
+        }
+
+        function calcLoanEmiUI() {
+            const amt = +document.getElementById('loanAmt').value;
+            const tenure = +document.getElementById('loanTenure').value;
+            if (amt <= 0) { document.getElementById('emiCalcPanel').style.display = 'none'; return; }
+            const r = 10.5 / 100 / 12;
+            const emi = (amt * r * Math.pow(1 + r, tenure)) / (Math.pow(1 + r, tenure) - 1);
+            document.getElementById('uiEmiVal').textContent = formatCurrency(emi);
+            document.getElementById('emiCalcPanel').style.display = 'block';
+        }
+
+        async function doApplyLoan() {
+            try {
+                await api('/api/loans/apply', {
+                    method: 'POST', body: {
+                        account_id: +document.getElementById('loanAcc').value,
+                        amount: +document.getElementById('loanAmt').value,
+                        tenure: +document.getElementById('loanTenure').value
+                    }
+                });
+                showToast('Loan application submitted!');
+                closeModal();
+                renderLoans(document.getElementById('contentArea'));
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
+        async function payEmi(id) {
+            try {
+                await api(`/api/loans/${id}/pay-emi`, { method: 'POST' });
+                showToast('EMI paid successfully!');
+                renderLoans(document.getElementById('contentArea'));
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
+        // ── LOAN REQUESTS (MANAGER) ──
+        async function renderLoanRequests(el) {
+            try {
+                const loans = await api('/api/loans');
+                el.innerHTML = `
+                <div class="page-header"><h2>Loan Applications</h2><p>Review and approve loan requests</p></div>
+                <table class="data-table">
+                    <thead><tr><th>ID</th><th>User</th><th>Amount</th><th>Tenure</th><th>EMI</th><th>Stage</th><th>Actions</th></tr></thead>
+                    <tbody>
+                        ${loans.map(l => {
+                    let stage = 'Unknown';
+                    if (l.status === 'active') stage = '<span class="badge badge-green">FULLY APPROVED</span>';
+                    else if (l.status === 'rejected') stage = `<span class="badge badge-red">REJECTED</span>`;
+                    else if (l.accountant_status === 'pending') stage = '<span class="badge badge-yellow">AWAITING ACCOUNTANT</span>';
+                    else if (l.accountant_status === 'approved' && l.manager_status === 'pending') stage = '<span class="badge badge-blue">AWAITING MANAGER</span>';
+
+                    return `
+                            <tr>
+                                <td>LOAN${String(l.loan_id).padStart(4, '0')}</td>
+                                <td>User #${l.user_id}</td>
+                                <td style="font-weight:600">${formatCurrency(l.loan_amount)}</td>
+                                <td>${l.tenure_months} mo</td>
+                                <td>${formatCurrency(l.emi_amount)}</td>
+                                <td>${stage}</td>
+                                <td>
+                                    ${l.status === 'pending' ? `
+                                        ${currentUser.role === 'accountant' && l.accountant_status === 'pending' ? `
+                                            <button class="btn btn-sm btn-success" onclick="accountantReview(${l.loan_id}, 'approved')">Verify</button>
+                                            <button class="btn btn-sm btn-danger" onclick="rejectLoan(${l.loan_id})" style="margin-left:4px">Reject</button>
+                                        ` : ''}
+                                        ${currentUser.role === 'manager' && l.accountant_status === 'approved' && l.manager_status === 'pending' ? `
+                                            <button class="btn btn-sm btn-success" onclick="approveLoan(${l.loan_id})">Approve</button>
+                                            <button class="btn btn-sm btn-danger" onclick="rejectLoan(${l.loan_id})" style="margin-left:4px">Reject</button>
+                                        ` : ''}
+                                        ${(currentUser.role === 'manager' && l.accountant_status === 'pending') || (currentUser.role === 'accountant' && l.accountant_status === 'approved') ? '<span style="font-size:0.8rem;color:var(--text-muted)">Waiting for other role</span>' : ''}
+                                    ` : '—'}
+                                </td>
+                            </tr>
+                        `}).join('')}
+                    </tbody>
+                </table>
+            `;
+            } catch (e) { el.innerHTML = `<div class="empty-state">Unable to load loan requests: ${e.message}</div>`; }
+        }
+
+        async function accountantReview(id, status) {
+            const verb = status === 'approved' ? 'verify' : 'reject';
+            if (!confirm(`Are you sure you want to ${verb} this loan application?`)) return;
+            try {
+                await api(`/api/loans/${id}/accountant-review`, { method: 'POST', body: { status } });
+                showToast(`Loan ${status} by accountant`);
+                renderLoanRequests(document.getElementById('contentArea'));
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
+        async function approveLoan(id) {
+            if (!confirm('Approve this loan? Funds will be disbursed.')) return;
+            try {
+                await api(`/api/loans/${id}/approve`, { method: 'POST' });
+                showToast('Loan approved!');
+                renderLoanRequests(document.getElementById('contentArea'));
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
+        async function rejectLoan(id) {
+            if (!confirm('Reject this loan application?')) return;
+            try {
+                await api(`/api/loans/${id}/reject`, { method: 'POST' });
+                showToast('Loan rejected');
+                renderLoanRequests(document.getElementById('contentArea'));
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
+        // ── AUDIT LOGS ──
+        async function renderAudit(el) {
+            try {
+                const logs = await api('/api/audit');
+                el.innerHTML = `
+                    <div class="page-header"><h2>Activity Logs</h2><p>Your recent activities and transactions</p></div>
+                    <div class="table-card" style="margin-top:0">
+                        ${logs.length ? `<table class="data-table">
+                            <thead><tr><th>Action</th><th>Details</th><th>Date</th></tr></thead>
+                            <tbody>
+                                ${logs.map(l => `
+                                    <tr>
+                                        <td><span class="badge badge-blue">${l.action}</span></td>
+                                        <td>${l.details}</td>
+                                        <td style="color:var(--text-muted);font-size:0.82rem">${l.timestamp}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>` : '<div class="empty-state">No activities found</div>'}
+                    </div>
+                `;
+            } catch (e) { el.innerHTML = `<div class="empty-state">Unable to load logs: ${e.message}</div>`; }
+        }
+
+        async function renderAuditLog(el) {
+            try {
+                const logs = await api('/api/audit-log');
+                el.innerHTML = `
+                    <div class="page-header"><h2>System Audit Log</h2><p>Full record of all system activities</p></div>
+                    <div class="table-card" style="margin-top:0">
+                        ${logs.length ? `<table class="data-table">
+                            <thead><tr><th>User</th><th>Action</th><th>Details</th><th>Date</th></tr></thead>
+                            <tbody>
+                                ${logs.map(l => `
+                                    <tr>
+                                        <td style="font-weight:600">${l.performed_by}</td>
+                                        <td><span class="badge badge-blue">${l.action}</span></td>
+                                        <td>${l.details}</td>
+                                        <td style="color:var(--text-muted);font-size:0.82rem">${l.timestamp}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>` : '<div class="empty-state">Audit log is empty</div>'}
+                    </div>
+                `;
+            } catch (e) { el.innerHTML = `<div class="empty-state">Unable to load audit log: ${e.message}</div>`; }
+        }
+
+
         // ── UNLOCK USER ──
         async function unlockUser(id) {
             try {
@@ -1071,6 +1568,85 @@
             if (e && e.target !== e.currentTarget) return;
             document.getElementById('modalOverlay').classList.remove('visible');
             document.getElementById('modalContent').style.maxWidth = '';
+            document.getElementById('modalContent').innerHTML = '';
+        }
+
+        // ── QR CODE LOGIC ──
+        let currentQrAccountId = null;
+
+        async function manageQr(accId) {
+            currentQrAccountId = accId;
+            const data = await api(`/api/accounts/${accId}/qr`);
+            const modal = document.getElementById('modalContent');
+            modal.innerHTML = `
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+                <div style="text-align:center;padding:10px">
+                    <h3>Account QR Code</h3>
+                    <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:20px">Share this QR for quick UPI-style transfers to Account #${accId}</p>
+                    <div class="qr-display-container">
+                        ${data.qr_code ? `<img src="${data.qr_code}" class="qr-image" id="qrPreview">` : `<div class="qr-placeholder" id="qrPreview">No QR Code Uploaded</div>`}
+                    </div>
+                    <div style="margin-top:24px;display:flex;gap:10px;justify-content:center">
+                        <button class="btn btn-primary" onclick="triggerQrUpload()">Upload New QR</button>
+                        ${data.qr_code ? `<button class="btn btn-ghost" onclick="removeQr(${accId})">Remove</button>` : ''}
+                    </div>
+                </div>
+            `;
+            document.getElementById('modalOverlay').classList.add('visible');
+        }
+
+        function triggerQrUpload() {
+            document.getElementById('qrInput').click();
+        }
+
+        async function handleQrUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            if (!file.type.startsWith('image/')) { showToast('Please select an image file', 'error'); return; }
+
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                const base64 = event.target.result;
+                try {
+                    await api(`/api/accounts/${currentQrAccountId}/qr`, {
+                        method: 'POST', body: { qr_code: base64 }
+                    });
+                    showToast('QR Code updated successfully!');
+                    manageQr(currentQrAccountId);
+                } catch (err) { showToast(err.message, 'error'); }
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function removeQr(accId) {
+            if (!confirm('Delete this QR code?')) return;
+            try {
+                await api(`/api/accounts/${accId}/qr`, { method: 'POST', body: { qr_code: '' } });
+                showToast('QR Code removed');
+                manageQr(accId);
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
+        async function viewRecipientQr() {
+            const toId = document.getElementById('toAccount').value;
+            if (!toId) { showToast('Enter target account ID first', 'error'); return; }
+            try {
+                const data = await api(`/api/accounts/${toId}/qr`);
+                const modal = document.getElementById('modalContent');
+                modal.innerHTML = `
+                    <button class="modal-close" onclick="closeModal()">&times;</button>
+                    <div style="text-align:center;padding:10px">
+                        <div style="font-size:2rem;margin-bottom:10px">📸</div>
+                        <h3>Recipient QR Code</h3>
+                        <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:20px">Account #${toId}</p>
+                        <div class="qr-display-container">
+                            ${data.qr_code ? `<img src="${data.qr_code}" class="qr-image">` : `<div class="qr-placeholder">Recipient has not uploaded a QR code.</div>`}
+                        </div>
+                        <button class="btn btn-primary" onclick="closeModal()" style="width:100%;margin-top:20px">Close</button>
+                    </div>
+                `;
+                document.getElementById('modalOverlay').classList.add('visible');
+            } catch (e) { showToast('Account not found', 'error'); }
         }
 
         // ── Check session on load ──
@@ -1079,6 +1655,7 @@
                 const user = await api('/api/me');
                 currentUser = user;
                 showDashboard();
+                fetchNotifs(); // Fetch at start
             } catch (e) {
                 // Not logged in
             }

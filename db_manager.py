@@ -45,7 +45,8 @@ def init_customers_db():
             user_id       INTEGER NOT NULL,
             branch_id     INTEGER DEFAULT NULL,
             created_at    TEXT    DEFAULT (datetime('now','localtime')),
-            is_active     INTEGER DEFAULT 1
+            is_active     INTEGER DEFAULT 1,
+            qr_code       TEXT    DEFAULT NULL
         );
 
         CREATE TABLE IF NOT EXISTS transactions (
@@ -58,6 +59,33 @@ def init_customers_db():
             status            TEXT    DEFAULT 'completed',
             target_account_id INTEGER,
             FOREIGN KEY (account_id) REFERENCES accounts(account_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS loans (
+            loan_id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id           INTEGER NOT NULL,
+            account_id        INTEGER NOT NULL,
+            loan_amount       REAL    NOT NULL,
+            interest_rate     REAL    DEFAULT 10.5,
+            tenure_months     INTEGER NOT NULL,
+            emi_amount        REAL    NOT NULL,
+            total_paid        REAL    DEFAULT 0.0,
+            status            TEXT    DEFAULT 'pending',
+            accountant_status TEXT    DEFAULT 'pending',
+            manager_status    TEXT    DEFAULT 'pending',
+            applied_at        TEXT    DEFAULT (datetime('now','localtime')),
+            approved_by       TEXT    DEFAULT '',
+            approved_at       TEXT    DEFAULT '',
+            FOREIGN KEY (account_id) REFERENCES accounts(account_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS beneficiaries (
+            ben_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER NOT NULL,
+            name       TEXT    NOT NULL,
+            account_id INTEGER NOT NULL,
+            nickname   TEXT    DEFAULT '',
+            created_at TEXT    DEFAULT (datetime('now','localtime'))
         );
     """)
     conn.commit()
@@ -127,6 +155,15 @@ def init_managers_db():
             branch_name TEXT    NOT NULL,
             location    TEXT    NOT NULL,
             manager_id  INTEGER
+        );
+
+        CREATE TABLE IF NOT EXISTS notifications (
+            notif_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER NOT NULL,
+            message    TEXT    NOT NULL,
+            type       TEXT    DEFAULT 'info',
+            is_read    INTEGER DEFAULT 0,
+            created_at TEXT    DEFAULT (datetime('now','localtime'))
         );
     """)
     conn.commit()
@@ -458,6 +495,15 @@ def get_audit_logs(limit: int = 30) -> list:
     conn.close()
     return [dict(r) for r in rows]
 
+def get_audit_logs_by_user(username: str, limit: int = 50) -> list:
+    """Get audit logs for a specific user."""
+    conn = get_connection("accountants")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM audit_log WHERE performed_by = ? ORDER BY timestamp DESC LIMIT ?", (username, limit))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
 
 # ─────────────────────────────────────────────
 # SYSTEM LOGS (managers.db)
@@ -596,3 +642,195 @@ def get_user_count() -> int:
     count = cursor.fetchone()[0]
     conn.close()
     return count
+
+
+# ─────────────────────────────────────────────
+# NOTIFICATIONS (managers.db)
+# ─────────────────────────────────────────────
+
+def add_notification(user_id: int, message: str, type: str = "info"):
+    """Record a notification for a user."""
+    conn = get_connection("managers")
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO notifications (user_id, message, type) VALUES (?, ?, ?)",
+        (user_id, message, type)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_notifications(user_id: int, limit: int = 20):
+    """Get recent notifications for a user."""
+    conn = get_connection("managers")
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
+        (user_id, limit)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def mark_notification_read(notif_id: int):
+    """Mark a notification as read."""
+    conn = get_connection("managers")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE notifications SET is_read = 1 WHERE notif_id = ?", (notif_id,))
+    conn.commit()
+    conn.close()
+
+
+def mark_all_notifications_read(user_id: int):
+    """Mark all notifications for a user as read."""
+    conn = get_connection("managers")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE notifications SET is_read = 1 WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_unread_notification_count(user_id: int) -> int:
+    """Get the count of unread notifications for a user."""
+    conn = get_connection("managers")
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0", (user_id,))
+    count = cursor.fetchone()[0]
+    conn.close()
+    return count
+
+# --- QR Code Functions ---
+
+def update_account_qr(account_id: int, qr_data: str):
+    """Update the QR code for a specific account."""
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE accounts SET qr_code = ? WHERE account_id = ?", (qr_data, account_id))
+    conn.commit()
+    conn.close()
+
+def get_account_qr(account_id: int) -> str:
+    """Get the QR code for a specific account."""
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("SELECT qr_code FROM accounts WHERE account_id = ?", (account_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+# ─────────────────────────────────────────────
+# BENEFICIARIES (customers.db)
+# ─────────────────────────────────────────────
+
+def add_beneficiary(user_id: int, name: str, account_id: int, nickname: str = ""):
+    """Add a new beneficiary for a user."""
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO beneficiaries (user_id, name, account_id, nickname) VALUES (?, ?, ?, ?)",
+        (user_id, name, account_id, nickname)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_beneficiaries(user_id: int):
+    """Get all beneficiaries for a user."""
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM beneficiaries WHERE user_id = ? ORDER BY name", (user_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def delete_beneficiary(ben_id: int):
+    """Delete a beneficiary by ID."""
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM beneficiaries WHERE ben_id = ?", (ben_id,))
+    conn.commit()
+    conn.close()
+
+
+# ─────────────────────────────────────────────
+# LOANS (customers.db)
+# ─────────────────────────────────────────────
+
+def apply_loan(user_id: int, account_id: int, amount: float, tenure: int, emi: float):
+    """Apply for a new loan."""
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO loans (user_id, account_id, loan_amount, tenure_months, emi_amount) VALUES (?, ?, ?, ?, ?)",
+        (user_id, account_id, amount, tenure, emi)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_loans_by_user(user_id: int):
+    """Get all loans for a specific user."""
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM loans WHERE user_id = ? ORDER BY applied_at DESC", (user_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_all_loans():
+    """Get all loans (any user)."""
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM loans ORDER BY applied_at DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_loan_by_id(loan_id: int):
+    """Get a single loan by ID."""
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM loans WHERE loan_id = ?", (loan_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def update_loan_status(loan_id: int, status: str, approved_by: str, accountant_status: str = None, manager_status: str = None):
+    """Update a loan's status (approved/rejected)."""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    
+    if accountant_status:
+        cursor.execute("UPDATE loans SET accountant_status = ? WHERE loan_id = ?", (accountant_status, loan_id))
+    if manager_status:
+        cursor.execute("UPDATE loans SET manager_status = ? WHERE loan_id = ?", (manager_status, loan_id))
+        
+    cursor.execute(
+        "UPDATE loans SET status = ?, approved_by = ?, approved_at = ? WHERE loan_id = ?",
+        (status, approved_by, now, loan_id)
+    )
+    conn.commit()
+    conn.close()
+    conn.commit()
+    conn.close()
+
+
+def make_emi_payment(loan_id: int, amount: float):
+    """Record an EMI payment for a loan."""
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE loans SET total_paid = total_paid + ? WHERE loan_id = ?", (amount, loan_id))
+    # If total_paid >= (emi * tenure) - rough closing logic
+    cursor.execute("SELECT emi_amount, tenure_months, total_paid FROM loans WHERE loan_id = ?", (loan_id,))
+    loan = cursor.fetchone()
+    if loan and loan['total_paid'] >= (loan['emi_amount'] * loan['tenure_months']):
+        cursor.execute("UPDATE loans SET status = 'closed' WHERE loan_id = ?", (loan_id,))
+    conn.commit()
+    conn.close()

@@ -1087,3 +1087,542 @@ body {
 .modal-close:hover {
     color: var(--text-primary);
 }
+
+/* ── Password Strength Meter ── */
+.password-strength-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: -8px 0 12px;
+}
+
+.password-strength-track {
+    flex: 1;
+    height: 6px;
+    background: #e2e8f0;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.password-strength-bar {
+    height: 100%;
+    width: 0%;
+    border-radius: 3px;
+    transition: width 0.3s ease, background 0.3s ease;
+}
+
+.password-strength-text {
+    font-size: 0.78rem;
+    font-weight: 600;
+    min-width: 48px;
+    text-align: right;
+    transition: color 0.3s ease;
+}
+
+/* QR Code Display */
+.qr-display-container {
+    width: 240px;
+    height: 240px;
+    margin: 0 auto;
+    background: white;
+    padding: 12px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+}
+
+.qr-image {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+.qr-placeholder {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    text-align: center;
+    padding: 20px;
+}
+
+/* Quick Pay Beneficiary Cards */
+.ben-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 16px;
+    margin-top: 20px;
+}
+
+.ben-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    box-shadow: var(--shadow-sm);
+}
+
+.ben-card:hover {
+    transform: translateY(-4px);
+    border-color: var(--primary-500);
+    box-shadow: var(--shadow-md);
+}
+
+.ben-add-card {
+    border: 2px dashed var(--border);
+    background: transparent;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+}
+
+.ben-add-card:hover {
+    border-color: var(--primary-500);
+    color: var(--primary-600);
+}
+
+.ben-avatar {
+    width: 48px;
+    height: 48px;
+    background: var(--primary-100);
+    color: var(--primary-700);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 1.1rem;
+    margin: 0 auto 12px;
+}
+
+.ben-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ben-acct {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+.ben-delete {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 20px;
+    height: 20px;
+    background: #fee2e2;
+    color: #ef4444;
+    border: none;
+    border-radius: 50%;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.ben-card:hover .ben-delete {
+    opacity: 1;
+}
+
+/* Loan Cards */
+.loan-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow-sm);
+}
+
+.loan-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.loan-amount {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.loan-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+
+.loan-detail-item .label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+}
+
+.loan-detail-item .value {
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+/* ── Notification Bell ── */
+.notif-wrapper {
+    position: relative;
+    margin-right: 8px;
+}
+
+.notif-bell {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 6px;
+    border-radius: 8px;
+    transition: color 0.2s, background 0.2s;
+    display: flex;
+    align-items: center;
+}
+
+.notif-bell:hover {
+    color: var(--primary-600);
+    background: var(--primary-50);
+}
+
+.notif-badge {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    background: #ef4444;
+    color: white;
+    font-size: 0.65rem;
+    font-weight: 700;
+    min-width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    line-height: 1;
+    pointer-events: none;
+}
+
+.notif-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    width: 360px;
+    max-height: 420px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--border);
+}
+
+.notif-dropdown.visible {
+    display: flex;
+}
+
+.notif-dropdown-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.notif-dropdown-header button {
+    background: none;
+    border: none;
+    color: var(--primary-500);
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.notif-dropdown-header button:hover {
+    background: var(--primary-50);
+}
+
+.notif-list {
+    overflow-y: auto;
+    max-height: 340px;
+    flex: 1;
+}
+
+.notif-item {
+    display: flex;
+    gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    cursor: default;
+    transition: background 0.15s;
+    align-items: flex-start;
+}
+
+.notif-item:hover {
+    background: var(--bg-secondary);
+}
+
+.notif-item.unread {
+    background: var(--primary-50);
+}
+
+.notif-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+}
+
+.notif-icon.info {
+    background: #dbeafe;
+    color: #2563eb;
+}
+
+.notif-icon.success {
+    background: #d1fae5;
+    color: #059669;
+}
+
+.notif-icon.warning {
+    background: #fef3c7;
+    color: #d97706;
+}
+
+.notif-icon.error {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+.notif-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.notif-body p {
+    margin: 0;
+    font-size: 0.84rem;
+    line-height: 1.4;
+    color: var(--text-primary);
+}
+
+.notif-body .notif-time {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.notif-empty {
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.88rem;
+}
+
+/* ── Loan Cards ── */
+.loan-card {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 12px;
+    transition: box-shadow 0.2s;
+}
+
+.loan-card:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+}
+
+.loan-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.loan-amount {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--primary-900);
+}
+
+.loan-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 12px;
+}
+
+.loan-detail-item {
+    text-align: center;
+    padding: 10px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+
+.loan-detail-item .label {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.loan-detail-item .value {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-top: 2px;
+    color: var(--text-primary);
+}
+
+/* ── Quick Pay Beneficiary Grid ── */
+.ben-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 14px;
+    margin-top: 16px;
+}
+
+.ben-card {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+}
+
+.ben-card:hover {
+    border-color: var(--primary-400);
+    box-shadow: 0 4px 16px rgba(30, 95, 165, 0.1);
+    transform: translateY(-2px);
+}
+
+.ben-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary-500), var(--primary-700));
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 1rem;
+    margin: 0 auto 10px;
+}
+
+.ben-name {
+    font-weight: 600;
+    font-size: 0.88rem;
+    color: var(--text-primary);
+}
+
+.ben-acct {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.ben-delete {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s;
+}
+
+.ben-card:hover .ben-delete {
+    opacity: 1;
+}
+
+.ben-delete:hover {
+    color: #ef4444;
+}
+
+.ben-add-card {
+    border: 2px dashed var(--border);
+    background: var(--bg-secondary);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: var(--text-muted);
+    font-size: 0.88rem;
+    font-weight: 500;
+    min-height: 140px;
+}
+
+.ben-add-card:hover {
+    border-color: var(--primary-400);
+    color: var(--primary-600);
+    background: var(--primary-50);
+}
+
+/* ── Transfer Confirm Overlay ── */
+.confirm-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin: 16px 0;
+}
+
+.confirm-grid .cg-item {
+    padding: 10px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    text-align: center;
+}
+
+.confirm-grid .cg-item .label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.confirm-grid .cg-item .value {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-top: 3px;
+}
