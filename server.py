@@ -73,9 +73,21 @@ def api_login():
     if not user["is_active"]:
         return jsonify({"error": "Account deactivated. Contact your manager."}), 401
 
+    if user.get("is_locked"):
+        return jsonify({"error": "Account locked due to multiple failed attempts. Contact your manager or accountant to unlock."}), 401
+
     if not verify_password(password, user["password_hash"]):
-        db_manager.add_system_log("LOGIN_FAILED", user["user_id"], f"Failed login for '{username}'")
-        return jsonify({"error": "Incorrect password"}), 401
+        attempts = db_manager.increment_failed_attempts(user["user_id"])
+        if attempts >= 3:
+            db_manager.lock_user(user["user_id"])
+            db_manager.add_system_log("ACCOUNT_LOCKED", user["user_id"], f"Account locked after {attempts} failed attempts")
+            return jsonify({"error": "Account locked due to 3 failed attempts. Contact your manager or accountant to unlock."}), 401
+        remaining = 3 - attempts
+        db_manager.add_system_log("LOGIN_FAILED", user["user_id"], f"Failed login for '{username}' (attempt {attempts})")
+        return jsonify({"error": f"Incorrect password. {remaining} attempt(s) remaining before lockout."}), 401
+
+    # Successful login — reset failed attempts
+    db_manager.reset_failed_attempts(user["user_id"])
 
     # Store in session
     session["user"] = {
@@ -453,6 +465,224 @@ def api_report():
 
 
 # ─────────────────────────────────────────────
+# PROFILE & PASSWORD API
+# ─────────────────────────────────────────────
+
+@app.route("/api/profile")
+@login_required
+def api_get_profile():
+    user = session["user"]
+    u = db_manager.get_user_by_id(user["user_id"])
+    if not u:
+        return jsonify({"error": "User not found"}), 404
+    return jsonify({
+        "user_id": u["user_id"], "username": u["username"], "full_name": u["full_name"],
+        "role": u["role"], "email": u.get("email", ""), "phone": u.get("phone", ""),
+        "address": u.get("address", ""), "created_at": u["created_at"],
+    })
+
+
+@app.route("/api/profile", methods=["PUT"])
+@login_required
+def api_update_profile():
+    data = request.json
+    user = session["user"]
+    db_manager.update_user_profile(
+        user["user_id"],
+        data.get("email", ""), data.get("phone", ""), data.get("address", "")
+    )
+    db_manager.add_system_log("PROFILE_UPDATED", user["user_id"], f"Profile updated by {user['username']}")
+    return jsonify({"success": True})
+
+
+@app.route("/api/change-password", methods=["POST"])
+@login_required
+def api_change_password():
+    data = request.json
+    user = session["user"]
+    u = db_manager.get_user_by_id(user["user_id"])
+    if not u:
+        return jsonify({"error": "User not found"}), 404
+
+    if not verify_password(data.get("old_password", ""), u["password_hash"]):
+        return jsonify({"error": "Current password is incorrect"}), 400
+
+    new_pass = data.get("new_password", "")
+    if len(new_pass) < 4:
+        return jsonify({"error": "New password must be at least 4 characters"}), 400
+
+    db_manager.update_user_password(user["user_id"], hash_password(new_pass))
+    db_manager.add_system_log("PASSWORD_CHANGED", user["user_id"], f"Password changed by {user['username']}")
+    return jsonify({"success": True})
+
+
+# ─────────────────────────────────────────────
+# UNLOCK USER API
+# ─────────────────────────────────────────────
+
+@app.route("/api/users/<int:user_id>/unlock", methods=["POST"])
+@role_required("manager", "accountant")
+def api_unlock_user(user_id):
+    user = session["user"]
+    db_manager.unlock_user(user_id)
+    db_manager.add_system_log("ACCOUNT_UNLOCKED", user["user_id"], f"Unlocked user #{user_id}")
+    return jsonify({"success": True})
+
+
+# ─────────────────────────────────────────────
+# BRANCH MANAGEMENT API
+# ─────────────────────────────────────────────
+
+@app.route("/api/branches")
+@login_required
+def api_get_branches():
+    return jsonify(db_manager.get_branch_info())
+
+
+@app.route("/api/branches", methods=["POST"])
+@role_required("manager")
+def api_create_branch():
+    data = request.json
+    user = session["user"]
+    bid = db_manager.create_branch(data["branch_name"], data["location"], data.get("manager_id"))
+    db_manager.add_system_log("BRANCH_CREATED", user["user_id"], f"Branch '{data['branch_name']}' created")
+    return jsonify({"success": True, "branch_id": bid})
+
+
+@app.route("/api/branches/<int:branch_id>", methods=["PUT"])
+@role_required("manager")
+def api_update_branch(branch_id):
+    data = request.json
+    user = session["user"]
+    db_manager.update_branch(branch_id, data["branch_name"], data["location"], data.get("manager_id"))
+    db_manager.add_system_log("BRANCH_UPDATED", user["user_id"], f"Branch #{branch_id} updated")
+    return jsonify({"success": True})
+
+
+@app.route("/api/branches/<int:branch_id>", methods=["DELETE"])
+@role_required("manager")
+def api_delete_branch(branch_id):
+    user = session["user"]
+    db_manager.delete_branch(branch_id)
+    db_manager.add_system_log("BRANCH_DELETED", user["user_id"], f"Branch #{branch_id} deleted")
+    return jsonify({"success": True})
+
+
+# ─────────────────────────────────────────────
+# MINI STATEMENT & RECEIPT API
+# ─────────────────────────────────────────────
+
+@app.route("/api/accounts/<int:account_id>/statement")
+@login_required
+def api_mini_statement(account_id):
+    from datetime import datetime
+    account = db_manager.get_account_by_id(account_id)
+    if not account:
+        return jsonify({"error": "Account not found"}), 404
+
+    user = session["user"]
+    if user["role"] == "customer" and account["user_id"] != user["user_id"]:
+        return jsonify({"error": "Access denied"}), 403
+
+    txns = db_manager.get_transactions_by_account(account_id, limit=20)
+    now = datetime.now().strftime("%d-%b-%Y %I:%M %p")
+
+    rows = ""
+    for t in txns:
+        color = "#16a34a" if t["txn_type"] == "deposit" else "#dc2626"
+        sign = "+" if t["txn_type"] == "deposit" else "-"
+        rows += f"""<tr>
+            <td>{t['timestamp'][:10]}</td><td>{t['txn_type'].upper()}</td>
+            <td>{t.get('description','')}</td>
+            <td style="color:{color};font-weight:600">{sign}₹{t['amount']:,.2f}</td>
+            <td>{t['status'].upper()}</td>
+        </tr>"""
+
+    html = f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>Mini Statement</title>
+    <style>
+      body{{font-family:'Inter',sans-serif;padding:40px;color:#1a1a2e;max-width:800px;margin:0 auto}}
+      .header{{text-align:center;border-bottom:3px solid #0c2340;padding-bottom:20px;margin-bottom:20px}}
+      .header h1{{color:#0c2340;margin:0;font-size:1.5rem}} .header p{{color:#64748b;margin:4px 0;font-size:0.85rem}}
+      .info-grid{{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px;font-size:0.9rem}}
+      .info-grid div{{padding:10px;background:#f1f5f9;border-radius:6px}}
+      .info-grid strong{{color:#0c2340}}
+      table{{width:100%;border-collapse:collapse;font-size:0.85rem}}
+      th{{background:#0c2340;color:white;padding:10px;text-align:left}}
+      td{{padding:8px 10px;border-bottom:1px solid #e2e8f0}}
+      tr:nth-child(even){{background:#f8fafc}}
+      .footer{{text-align:center;margin-top:30px;font-size:0.75rem;color:#94a3b8;border-top:2px solid #e2e8f0;padding-top:15px}}
+      .balance{{font-size:1.3rem;font-weight:700;color:#0c2340;text-align:right;margin:16px 0}}
+      @media print{{body{{padding:20px}}}}
+    </style></head><body>
+    <div class="header"><h1>🏦 Bank Security System</h1><p>Mini Statement / Passbook</p><p>Generated on {now}</p></div>
+    <div class="info-grid">
+      <div><strong>Account No:</strong> {str(account_id).zfill(6)}</div>
+      <div><strong>Account Type:</strong> {account['account_type'].upper()}</div>
+      <div><strong>Account Holder:</strong> {account['customer_name']}</div>
+      <div><strong>Status:</strong> {'Active' if account['is_active'] else 'Closed'}</div>
+    </div>
+    <div class="balance">Current Balance: ₹{account['balance']:,.2f}</div>
+    <table><thead><tr><th>Date</th><th>Type</th><th>Description</th><th>Amount</th><th>Status</th></tr></thead>
+    <tbody>{rows if rows else '<tr><td colspan="5" style="text-align:center;padding:20px">No transactions found</td></tr>'}</tbody></table>
+    <div class="footer"><p>This is a computer-generated statement and does not require a signature.</p>
+    <p>Bank Security System · Secure · Reliable · Role-Based Access</p></div></body></html>"""
+
+    return html, 200, {"Content-Type": "text/html"}
+
+
+@app.route("/api/transactions/<int:txn_id>/receipt")
+@login_required
+def api_transaction_receipt(txn_id):
+    from datetime import datetime
+    txn = db_manager.get_transaction_by_id(txn_id)
+    if not txn:
+        return jsonify({"error": "Transaction not found"}), 404
+
+    account = db_manager.get_account_by_id(txn["account_id"])
+    user = session["user"]
+    if user["role"] == "customer" and account and account["user_id"] != user["user_id"]:
+        return jsonify({"error": "Access denied"}), 403
+
+    now = datetime.now().strftime("%d-%b-%Y %I:%M %p")
+    color = "#16a34a" if txn["txn_type"] == "deposit" else "#dc2626"
+    sign = "+" if txn["txn_type"] == "deposit" else "-"
+
+    html = f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>Transaction Receipt</title>
+    <style>
+      body{{font-family:'Inter',sans-serif;padding:40px;color:#1a1a2e;max-width:500px;margin:0 auto}}
+      .receipt{{border:2px solid #0c2340;border-radius:12px;padding:30px;position:relative}}
+      .receipt::before{{content:'';position:absolute;top:0;left:0;right:0;height:6px;background:#0c2340;border-radius:10px 10px 0 0}}
+      .header{{text-align:center;margin-bottom:24px}}
+      .header h2{{color:#0c2340;margin:0;font-size:1.2rem}} .header p{{color:#94a3b8;font-size:0.8rem;margin:4px 0}}
+      .amount{{text-align:center;font-size:2rem;font-weight:700;color:{color};margin:20px 0}}
+      .details{{font-size:0.88rem}}
+      .details .row{{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f1f5f9}}
+      .details .row .label{{color:#64748b}} .details .row .value{{font-weight:600;color:#1a1a2e}}
+      .footer{{text-align:center;margin-top:24px;font-size:0.72rem;color:#94a3b8}}
+      .stamp{{text-align:center;margin-top:16px;color:#16a34a;font-weight:700;font-size:0.9rem;
+              border:2px solid #16a34a;display:inline-block;padding:4px 16px;border-radius:4px;transform:rotate(-5deg)}}
+      @media print{{body{{padding:10px}} .receipt{{border:1px solid #ccc}}}}
+    </style></head><body>
+    <div class="receipt">
+      <div class="header"><h2>🏦 Bank Security System</h2><p>Transaction Receipt</p><p>{now}</p></div>
+      <div class="amount">{sign}₹{txn['amount']:,.2f}</div>
+      <div class="details">
+        <div class="row"><span class="label">Transaction ID</span><span class="value">TXN{str(txn['txn_id']).zfill(8)}</span></div>
+        <div class="row"><span class="label">Type</span><span class="value">{txn['txn_type'].upper()}</span></div>
+        <div class="row"><span class="label">Account No.</span><span class="value">{str(txn['account_id']).zfill(6)}</span></div>
+        <div class="row"><span class="label">Date & Time</span><span class="value">{txn['timestamp']}</span></div>
+        <div class="row"><span class="label">Description</span><span class="value">{txn.get('description','—')}</span></div>
+        <div class="row"><span class="label">Status</span><span class="value">{txn['status'].upper()}</span></div>
+        {'<div class="row"><span class="label">Target Account</span><span class="value">#' + str(txn['target_account_id']).zfill(6) + '</span></div>' if txn.get('target_account_id') else ''}
+      </div>
+      <div style="text-align:center;margin-top:20px"><span class="stamp">✓ {txn['status'].upper()}</span></div>
+      <div class="footer"><p>This is a computer-generated receipt.</p><p>Bank Security System</p></div>
+    </div></body></html>"""
+
+    return html, 200, {"Content-Type": "text/html"}
+
+
+# ─────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────
 
@@ -461,3 +691,4 @@ if __name__ == "__main__":
     print("\n🏦 Bank Security System — Web UI")
     print("   http://localhost:5001\n")
     app.run(debug=True, port=5001)
+

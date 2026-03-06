@@ -43,6 +43,7 @@ def init_customers_db():
             balance       REAL    DEFAULT 0.0,
             account_type  TEXT    DEFAULT 'savings',
             user_id       INTEGER NOT NULL,
+            branch_id     INTEGER DEFAULT NULL,
             created_at    TEXT    DEFAULT (datetime('now','localtime')),
             is_active     INTEGER DEFAULT 1
         );
@@ -98,13 +99,18 @@ def init_managers_db():
     cursor = conn.cursor()
     cursor.executescript("""
         CREATE TABLE IF NOT EXISTS users (
-            user_id       INTEGER PRIMARY KEY AUTOINCREMENT,
-            username      TEXT    NOT NULL UNIQUE,
-            password_hash TEXT    NOT NULL,
-            role          TEXT    NOT NULL DEFAULT 'customer',
-            full_name     TEXT    NOT NULL,
-            created_at    TEXT    DEFAULT (datetime('now','localtime')),
-            is_active     INTEGER DEFAULT 1
+            user_id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            username        TEXT    NOT NULL UNIQUE,
+            password_hash   TEXT    NOT NULL,
+            role            TEXT    NOT NULL DEFAULT 'customer',
+            full_name       TEXT    NOT NULL,
+            email           TEXT    DEFAULT '',
+            phone           TEXT    DEFAULT '',
+            address         TEXT    DEFAULT '',
+            created_at      TEXT    DEFAULT (datetime('now','localtime')),
+            is_active       INTEGER DEFAULT 1,
+            failed_attempts INTEGER DEFAULT 0,
+            is_locked       INTEGER DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS system_logs (
@@ -162,11 +168,21 @@ def get_user_by_username(username: str) -> Optional[dict]:
     return dict(row) if row else None
 
 
+def get_user_by_id(user_id: int) -> Optional[dict]:
+    """Fetch a user by user_id."""
+    conn = get_connection("managers")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
 def get_all_users() -> list:
     """Fetch all users."""
     conn = get_connection("managers")
     cursor = conn.cursor()
-    cursor.execute("SELECT user_id, username, role, full_name, created_at, is_active FROM users ORDER BY user_id")
+    cursor.execute("SELECT user_id, username, role, full_name, created_at, is_active, is_locked FROM users ORDER BY user_id")
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -181,16 +197,72 @@ def toggle_user_active(user_id: int, active: bool):
     conn.close()
 
 
+def update_user_password(user_id: int, new_hash: str):
+    """Update a user's password hash."""
+    conn = get_connection("managers")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET password_hash = ? WHERE user_id = ?", (new_hash, user_id))
+    conn.commit()
+    conn.close()
+
+
+def update_user_profile(user_id: int, email: str, phone: str, address: str):
+    """Update a user's profile fields."""
+    conn = get_connection("managers")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET email = ?, phone = ?, address = ? WHERE user_id = ?",
+                   (email, phone, address, user_id))
+    conn.commit()
+    conn.close()
+
+
+def increment_failed_attempts(user_id: int) -> int:
+    """Increment failed login attempts. Returns new count."""
+    conn = get_connection("managers")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET failed_attempts = failed_attempts + 1 WHERE user_id = ?", (user_id,))
+    conn.commit()
+    cursor.execute("SELECT failed_attempts FROM users WHERE user_id = ?", (user_id,))
+    count = cursor.fetchone()[0]
+    conn.close()
+    return count
+
+
+def reset_failed_attempts(user_id: int):
+    """Reset failed login attempts to 0."""
+    conn = get_connection("managers")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET failed_attempts = 0 WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+
+def lock_user(user_id: int):
+    """Lock a user account."""
+    conn = get_connection("managers")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET is_locked = 1 WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+
+def unlock_user(user_id: int):
+    """Unlock a user account and reset failed attempts."""
+    conn = get_connection("managers")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET is_locked = 0, failed_attempts = 0 WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+
 def delete_user(user_id: int):
     """Delete a user and close all their associated accounts."""
-    # First, close all associated accounts in customers.db
     cust_conn = get_connection("customers")
     cust_cursor = cust_conn.cursor()
     cust_cursor.execute("UPDATE accounts SET is_active = 0 WHERE user_id = ?", (user_id,))
     cust_conn.commit()
     cust_conn.close()
 
-    # Then delete the user from managers.db
     conn = get_connection("managers")
     cursor = conn.cursor()
     cursor.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
@@ -425,6 +497,51 @@ def get_branch_info() -> list:
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def create_branch(branch_name: str, location: str, manager_id: int = None) -> int:
+    """Create a new branch."""
+    conn = get_connection("managers")
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO branch_info (branch_name, location, manager_id) VALUES (?, ?, ?)",
+        (branch_name, location, manager_id)
+    )
+    conn.commit()
+    bid = cursor.lastrowid
+    conn.close()
+    return bid
+
+
+def update_branch(branch_id: int, branch_name: str, location: str, manager_id: int = None):
+    """Update an existing branch."""
+    conn = get_connection("managers")
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE branch_info SET branch_name = ?, location = ?, manager_id = ? WHERE branch_id = ?",
+        (branch_name, location, manager_id, branch_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def delete_branch(branch_id: int):
+    """Delete a branch."""
+    conn = get_connection("managers")
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM branch_info WHERE branch_id = ?", (branch_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_transaction_by_id(txn_id: int) -> Optional[dict]:
+    """Get a single transaction by ID."""
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM transactions WHERE txn_id = ?", (txn_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
 
 
 # ─────────────────────────────────────────────

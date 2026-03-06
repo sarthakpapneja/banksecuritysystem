@@ -188,6 +188,9 @@
                 { id: 'deposit', icon: '💵', label: 'Deposit' },
                 { id: 'withdraw', icon: '🏧', label: 'Withdraw' },
                 { id: 'transfer', icon: '🔄', label: 'Transfer' },
+                { section: 'Settings' },
+                { id: 'profile', icon: '👤', label: 'My Profile' },
+                { id: 'change-password', icon: '🔑', label: 'Change Password' },
             ],
             accountant: [
                 { id: 'overview', icon: '📊', label: 'Overview' },
@@ -197,11 +200,15 @@
                 { id: 'audit-log', icon: '📊', label: 'Audit Log' },
                 { section: 'Account Management' },
                 { id: 'create-account', icon: '➕', label: 'Create Account' },
+                { section: 'Settings' },
+                { id: 'profile', icon: '👤', label: 'My Profile' },
+                { id: 'change-password', icon: '🔑', label: 'Change Password' },
             ],
             manager: [
                 { id: 'overview', icon: '📊', label: 'Overview' },
                 { id: 'report', icon: '📈', label: 'Bank Report' },
                 { id: 'users', icon: '👥', label: 'Manage Users' },
+                { id: 'branches', icon: '🏢', label: 'Branches' },
                 { section: 'Operations' },
                 { id: 'accounts', icon: '🏦', label: 'All Accounts' },
                 { id: 'requests', icon: '📋', label: 'Pending Requests' },
@@ -209,6 +216,9 @@
                 { section: 'Logs' },
                 { id: 'system-logs', icon: '🔍', label: 'System Logs' },
                 { id: 'audit-log', icon: '📊', label: 'Audit Log' },
+                { section: 'Settings' },
+                { id: 'profile', icon: '👤', label: 'My Profile' },
+                { id: 'change-password', icon: '🔑', label: 'Change Password' },
             ],
         };
 
@@ -269,6 +279,9 @@
             report: renderReport,
             users: renderUsers,
             'system-logs': renderSystemLogs,
+            'profile': renderProfile,
+            'change-password': renderChangePassword,
+            'branches': renderBranches,
         };
 
         // ── OVERVIEW ──
@@ -309,7 +322,7 @@
                                 <div style="font-size:0.72rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em">${a.account_type} Account</div>
                                 <span class="badge badge-green">Active</span>
                             </div>
-                            <div style="font-size:1.05rem;font-weight:700;color:var(--primary-700);font-variant-numeric:tabular-nums;letter-spacing:0.02em;margin-bottom:12px">A/C No. ${String(a.account_id).padStart(6,'0')}</div>
+                            <div style="font-size:1.05rem;font-weight:700;color:var(--primary-700);font-variant-numeric:tabular-nums;letter-spacing:0.02em;margin-bottom:12px">A/C No. ${String(a.account_id).padStart(6, '0')}</div>
                             <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:2px">${a.customer_name}</div>
                             <div style="font-size:1.5rem;font-weight:700;color:var(--text-primary);margin-top:4px">${formatCurrency(a.balance)}</div>
                             <div style="font-size:0.72rem;color:var(--text-muted);margin-top:8px;border-top:1px solid var(--border-light);padding-top:8px">Click to view transactions →</div>
@@ -393,7 +406,7 @@
                     <td><span class="badge badge-blue">${a.account_type}</span></td>
                     <td class="amount-positive">${formatCurrency(a.balance)}</td>
                     <td>${a.is_active ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Closed</span>'}</td>
-                    <td><button class="btn btn-sm btn-ghost" onclick="showTransactions(${a.account_id})">View Txns</button></td>
+                    <td><button class="btn btn-sm btn-ghost" onclick="showTransactions(${a.account_id})">View Txns</button><button class="btn btn-sm" onclick="downloadStatement(${a.account_id})" style="margin-left:4px" title="Download Statement">📄 Statement</button></td>
                 </tr>
             `).join('')}</tbody>
         </table>
@@ -592,7 +605,7 @@
             }
             container.innerHTML = `
         <div class="table-card"><div class="table-header"><h3>${title}</h3></div>
-        <table class="data-table"><thead><tr><th>ID</th><th>Acc #</th><th>Type</th><th>Amount</th><th>Date</th><th>Description</th><th>Status</th></tr></thead>
+        <table class="data-table"><thead><tr><th>ID</th><th>Acc #</th><th>Type</th><th>Amount</th><th>Date</th><th>Description</th><th>Status</th><th></th></tr></thead>
         <tbody>${txns.map(t => `<tr>
             <td>#${t.txn_id}</td>
             <td>#${t.account_id}</td>
@@ -601,6 +614,7 @@
             <td style="color:var(--text-muted);font-size:0.82rem">${t.timestamp}</td>
             <td style="font-size:0.85rem">${t.description}</td>
             <td><span class="badge badge-${t.status === 'completed' ? 'green' : 'yellow'}">${t.status}</span></td>
+            <td><button onclick="viewReceipt(${t.txn_id})" class="btn" style="padding:4px 10px;font-size:0.75rem" title="View Receipt">📄</button></td>
         </tr>`).join('')}</tbody></table></div>
     `;
         }
@@ -714,8 +728,11 @@
             <td>${u.full_name}</td>
             <td><span class="badge badge-${u.role === 'manager' ? 'red' : u.role === 'accountant' ? 'yellow' : 'green'}">${u.role}</span></td>
             <td style="color:var(--text-muted);font-size:0.82rem">${u.created_at}</td>
-            <td>${u.is_active ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Inactive</span>'}</td>
             <td>
+                ${u.is_locked ? '<span class="badge badge-red">🔒 Locked</span>' : u.is_active ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Inactive</span>'}
+            </td>
+            <td>
+                ${u.is_locked ? `<button class="btn btn-sm btn-success" onclick="unlockUser(${u.user_id})">🔓 Unlock</button>` : ''}
                 <button class="btn btn-sm btn-warning" onclick="toggleUser(${u.user_id})">${u.is_active ? 'Deactivate' : 'Activate'}</button>
                 <button class="btn btn-sm btn-danger" onclick="deleteUser(${u.user_id},'${u.username}')">Delete</button>
             </td>
@@ -795,6 +812,136 @@
             <td style="font-size:0.85rem">${l.details}</td>
         </tr>`).join('')}</tbody></table></div>
     `;
+        }
+
+        // ── PROFILE ──
+        async function renderProfile(el) {
+            const p = await api('/api/profile');
+            el.innerHTML = `
+                <div class="page-header"><h2>👤 My Profile</h2><p>Manage your personal information</p></div>
+                <div class="modal" style="max-width:520px">
+                    <div style="text-align:center;margin-bottom:20px">
+                        <div class="avatar ${p.role}" style="width:64px;height:64px;font-size:1.4rem;margin:0 auto 8px">${p.full_name.split(' ').map(w => w[0]).join('')}</div>
+                        <div style="font-weight:600;font-size:1.1rem">${p.full_name}</div>
+                        <span class="badge badge-blue">${p.role.toUpperCase()}</span>
+                        <div style="font-size:0.8rem;color:var(--text-muted);margin-top:6px">@${p.username} · Member since ${p.created_at?.slice(0, 10) || '—'}</div>
+                    </div>
+                    <div class="form-group"><label>Email</label><input type="email" id="profEmail" value="${p.email || ''}" placeholder="your@email.com"></div>
+                    <div class="form-group"><label>Phone</label><input type="tel" id="profPhone" value="${p.phone || ''}" placeholder="+91 xxxxxxxxxx"></div>
+                    <div class="form-group"><label>Address</label><input type="text" id="profAddress" value="${p.address || ''}" placeholder="Your address"></div>
+                    <button class="btn btn-primary" onclick="saveProfile()" style="width:100%">💾 Save Profile</button>
+                </div>
+            `;
+        }
+        async function saveProfile() {
+            try {
+                await api('/api/profile', {
+                    method: 'PUT', body: {
+                        email: document.getElementById('profEmail').value,
+                        phone: document.getElementById('profPhone').value,
+                        address: document.getElementById('profAddress').value,
+                    }
+                });
+                showToast('Profile updated!');
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
+        // ── CHANGE PASSWORD ──
+        async function renderChangePassword(el) {
+            el.innerHTML = `
+                <div class="page-header"><h2>🔑 Change Password</h2><p>Update your account password</p></div>
+                <div class="modal" style="max-width:420px">
+                    <div class="form-group"><label>Current Password</label><input type="password" id="cpOld" placeholder="Enter current password"></div>
+                    <div class="form-group"><label>New Password</label><input type="password" id="cpNew" placeholder="Enter new password (min 4 chars)"></div>
+                    <div class="form-group"><label>Confirm New Password</label><input type="password" id="cpConfirm" placeholder="Re-enter new password"></div>
+                    <button class="btn btn-primary" onclick="doChangePassword()" style="width:100%">🔒 Change Password</button>
+                </div>
+            `;
+        }
+        async function doChangePassword() {
+            const old_password = document.getElementById('cpOld').value;
+            const new_password = document.getElementById('cpNew').value;
+            const confirm = document.getElementById('cpConfirm').value;
+            if (new_password !== confirm) { showToast('Passwords do not match', 'error'); return; }
+            if (new_password.length < 4) { showToast('Password must be at least 4 characters', 'error'); return; }
+            try {
+                await api('/api/change-password', { method: 'POST', body: { old_password, new_password } });
+                showToast('Password changed successfully!');
+                document.getElementById('cpOld').value = '';
+                document.getElementById('cpNew').value = '';
+                document.getElementById('cpConfirm').value = '';
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
+        // ── BRANCHES (Manager) ──
+        async function renderBranches(el) {
+            const branches = await api('/api/branches');
+            el.innerHTML = `
+                <div class="page-header"><h2>🏢 Branch Management</h2><p>Add and manage bank branches</p></div>
+                <button class="btn btn-success" onclick="showCreateBranchModal()" style="margin-bottom:16px">➕ Add Branch</button>
+                <div id="branchesTable"></div>
+            `;
+            const tbl = document.getElementById('branchesTable');
+            if (!branches.length) {
+                tbl.innerHTML = '<div class="empty-state"><div class="icon">🏢</div><p>No branches yet</p><p style="font-size:0.9rem;color:var(--text-muted)">Click "Add Branch" to create one</p></div>';
+                return;
+            }
+            tbl.innerHTML = `
+                <div class="table-card"><div class="table-header"><h3>All Branches (${branches.length})</h3></div>
+                <table class="data-table"><thead><tr><th>ID</th><th>Branch Name</th><th>Location</th><th>Manager ID</th><th>Actions</th></tr></thead>
+                <tbody>${branches.map(b => `<tr>
+                    <td>${b.branch_id}</td>
+                    <td style="font-weight:600">${b.branch_name}</td>
+                    <td>${b.location}</td>
+                    <td>${b.manager_id || '—'}</td>
+                    <td><button class="btn btn-danger" style="padding:4px 10px;font-size:0.78rem" onclick="deleteBranch(${b.branch_id})">Delete</button></td>
+                </tr>`).join('')}</tbody></table></div>
+            `;
+        }
+        function showCreateBranchModal() {
+            document.getElementById('modalContent').innerHTML = `
+                <h3 style="margin-bottom:16px">➕ Add New Branch</h3>
+                <div class="form-group"><label>Branch Name</label><input type="text" id="brName" placeholder="e.g. Main Branch"></div>
+                <div class="form-group"><label>Location</label><input type="text" id="brLocation" placeholder="e.g. Mumbai, Maharashtra"></div>
+                <button class="btn btn-success" onclick="doCreateBranch()" style="width:100%">Create Branch</button>
+            `;
+            document.getElementById('modalOverlay').classList.add('visible');
+        }
+        async function doCreateBranch() {
+            try {
+                await api('/api/branches', {
+                    method: 'POST', body: {
+                        branch_name: document.getElementById('brName').value,
+                        location: document.getElementById('brLocation').value,
+                    }
+                });
+                closeModal(); showToast('Branch created!'); navigate('branches');
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+        async function deleteBranch(id) {
+            if (!confirm('Delete this branch?')) return;
+            try {
+                await api(`/api/branches/${id}`, { method: 'DELETE' });
+                showToast('Branch deleted'); navigate('branches');
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
+        // ── TRANSACTION RECEIPT ──
+        function viewReceipt(txnId) {
+            window.open(`/api/transactions/${txnId}/receipt`, '_blank');
+        }
+
+        // ── MINI STATEMENT ──
+        function downloadStatement(accountId) {
+            window.open(`/api/accounts/${accountId}/statement`, '_blank');
+        }
+
+        // ── UNLOCK USER ──
+        async function unlockUser(id) {
+            try {
+                await api(`/api/users/${id}/unlock`, { method: 'POST' });
+                showToast('User unlocked!'); navigate('users');
+            } catch (e) { showToast(e.message, 'error'); }
         }
 
         // ── MODAL HELPERS ──
