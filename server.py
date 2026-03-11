@@ -150,6 +150,23 @@ def api_account_detail(account_id):
     return jsonify(account)
 
 
+@app.route("/api/accounts/lookup/<int:account_id>")
+@login_required
+def api_account_lookup(account_id):
+    """
+    Public lookup for account existence and recipient name.
+    Does not expose balance or other sensitive details.
+    """
+    account = db_manager.get_account_by_id(account_id)
+    if not account or not account["is_active"]:
+        return jsonify({"error": "Account not found"}), 404
+    
+    return jsonify({
+        "account_id": account["account_id"],
+        "customer_name": account["customer_name"]
+    })
+
+
 @app.route("/api/accounts/<int:account_id>/transactions")
 @login_required
 def api_account_transactions(account_id):
@@ -239,8 +256,8 @@ def api_withdraw():
 @role_required("customer", "manager")
 def api_transfer():
     data = request.json
-    src_id = data.get("from_account_id")
-    dst_id = data.get("to_account_id")
+    src_id = data.get("src_id")
+    dst_id = data.get("dst_id")
     amount = data.get("amount", 0)
 
     src = db_manager.get_account_by_id(src_id)
@@ -599,6 +616,50 @@ def api_create_user():
 
     db_manager.add_system_log("USER_CREATED", user["user_id"], f"Created {data['role']}: {data['username']} (web)")
     return jsonify({"success": True, "user_id": uid})
+
+
+@app.route("/api/users/create_with_account", methods=["POST"])
+@role_required("manager")
+def api_create_user_with_account():
+    data = request.json
+    manager_user = session["user"]
+
+    username = data.get("username")
+    password = data.get("password")
+    full_name = data.get("full_name")
+    role = data.get("role", "customer")
+    email = data.get("email", "")
+    phone = data.get("phone", "")
+    account_type = data.get("account_type", "savings")
+    balance = float(data.get("balance", 0))
+
+    if db_manager.get_user_by_username(username):
+        return jsonify({"error": "Username already exists"}), 400
+
+    try:
+        user_id, acc_id = db_manager.create_user_with_account(
+            username=username,
+            password_hash=hash_password(password),
+            role=role,
+            full_name=full_name,
+            email=email,
+            phone=phone,
+            account_type=account_type,
+            balance=balance
+        )
+        
+        db_manager.add_system_log("USER_CREATED", manager_user["user_id"], f"Created {role}: {username} (with account)")
+        if acc_id:
+            db_manager.add_system_log("ACCOUNT_CREATED", manager_user["user_id"], f"Created account #{acc_id} for {username}")
+            
+        return jsonify({
+            "success": True, 
+            "user_id": user_id, 
+            "account_id": acc_id,
+            "message": f"User and Account created successfully" if acc_id else "User created successfully"
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route("/api/users/<int:user_id>/toggle", methods=["POST"])

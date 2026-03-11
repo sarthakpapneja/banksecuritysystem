@@ -449,6 +449,28 @@ def create_account(customer_name: str, email: str, phone: str, balance: float,
     return acc_id
 
 
+def create_user_with_account(username: str, password_hash: str, role: str, full_name: str,
+                              email: str, phone: str, account_type: str, balance: float) -> tuple:
+    """
+    Atomic creation of a user and their initial account (if role is customer).
+    Since databases are separate, we handle rollback manually.
+    """
+    user_id = create_user(username, password_hash, role, full_name)
+    if not user_id:
+        raise Exception("Could not create user record")
+
+    if role == 'customer':
+        try:
+            acc_id = create_account(full_name, email, phone, balance, account_type, user_id)
+            return user_id, acc_id
+        except Exception as e:
+            # Rollback user creation
+            delete_user(user_id)
+            raise e
+    
+    return user_id, None
+
+
 def get_accounts_by_user(user_id: int) -> list:
     """Get all accounts for a given user."""
     conn = get_connection("customers")

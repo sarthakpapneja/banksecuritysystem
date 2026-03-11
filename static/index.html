@@ -842,22 +842,18 @@
             }
 
             try {
-                // Since this is just a UI enhancement to prevent typos, we can use an endpoint if available.
-                // If it fails or returns nothing, we just ignore it.
-                // Assuming we can derive it from the accounts endpoint for now (mock behavior if needed).
-                // A better approach in a real app would be a dedicated /api/account/lookup endpoint.
-                const accounts = await api('/api/accounts'); 
-                const acc = accounts.find(a => a.account_id === +accId);
-                
-                if (acc) {
-                    nameDisplay.textContent = `Payee: ${acc.customer_name}`;
+                // Use the dedicated lookup endpoint to find any active account
+                const data = await api(`/api/accounts/lookup/${accId}`);
+                if (data.customer_name) {
+                    nameDisplay.textContent = `Payee: ${data.customer_name}`;
                     nameDisplay.style.color = 'var(--success)';
                 } else {
                     nameDisplay.textContent = 'Account not found';
                     nameDisplay.style.color = 'var(--danger)';
                 }
             } catch (e) {
-                nameDisplay.textContent = '';
+                nameDisplay.textContent = 'Account not found';
+                nameDisplay.style.color = 'var(--danger)';
             }
         }
 
@@ -1109,47 +1105,71 @@
     `;
         }
 
-        // ── CREATE ACCOUNT ──
-        async function renderCreateAccount(el) {
-            let usersHtml = '';
-            try {
-                const users = await api('/api/users');
-                const customers = users.filter(u => u.role === 'customer');
-                usersHtml = customers.map(u => `<option value="${u.user_id}">${u.full_name} (${u.username})</option>`).join('');
-            } catch (e) {
-                usersHtml = '<option value="">Enter user ID manually</option>';
-            }
-
-            el.innerHTML = `
-        <div class="page-header"><h2>Create Account</h2><p>Open a new customer bank account</p></div>
-        <div class="modal" style="max-width:480px">
-            <div class="form-group"><label>Customer User ID</label><input type="number" id="caUserId" min="1" placeholder="Customer user ID"></div>
-            <div class="form-group"><label>Full Name</label><input type="text" id="caName" placeholder="Customer name"></div>
-            <div class="form-group"><label>Email</label><input type="email" id="caEmail" placeholder="email@example.com"></div>
-            <div class="form-group"><label>Phone</label><input type="text" id="caPhone" placeholder="Phone number"></div>
-            <div class="form-group"><label>Account Type</label>
-                <select id="caType"><option value="savings">Savings</option><option value="current">Current</option><option value="fixed_deposit">Fixed Deposit</option></select>
-            </div>
-            <div class="form-group"><label>Initial Deposit (₹)</label><input type="number" id="caBalance" min="0" step="0.01" value="0" placeholder="0.00"></div>
-            <button class="btn btn-success" onclick="doCreateAccount()" style="width:100%">Create Account</button>
-        </div>
-    `;
+        // ── UNIFIED CREATION LOGIC ──
+        function getUnifiedFormHTML(title, subtitle, buttonText) {
+            return `
+                <div class="page-header"><h2>${title}</h2><p>${subtitle}</p></div>
+                <div class="modal" style="max-width:480px; margin: 0 auto;">
+                    <div class="form-group"><label>Full Name</label><input type="text" id="uniFullName" placeholder="Full Name"></div>
+                    <div class="form-group"><label>Username</label><input type="text" id="uniUsername" placeholder="Username"></div>
+                    <div class="form-group"><label>Password</label><input type="password" id="uniPassword" placeholder="Password"></div>
+                    <div class="form-group"><label>Email</label><input type="email" id="uniEmail" placeholder="email@example.com"></div>
+                    <div class="form-group"><label>Phone</label><input type="text" id="uniPhone" placeholder="Phone number"></div>
+                    <div class="form-group"><label>Role</label>
+                        <select id="uniRole" onchange="toggleUniAccountFields()">
+                            <option value="customer">Customer</option>
+                            <option value="accountant">Accountant</option>
+                            <option value="manager">Manager</option>
+                        </select>
+                    </div>
+                    <div id="uniAccountFields">
+                        <div class="form-group"><label>Account Type</label>
+                            <select id="uniAccountType">
+                                <option value="savings">Savings</option>
+                                <option value="current">Current</option>
+                                <option value="fixed_deposit">Fixed Deposit</option>
+                            </select>
+                        </div>
+                        <div class="form-group"><label>Initial Deposit (₹)</label><input type="number" id="uniBalance" min="0" step="0.01" value="0" placeholder="0.00"></div>
+                    </div>
+                    <button class="btn btn-success" onclick="doUnifiedCreate()" style="width:100%; margin-top: 10px;">${buttonText}</button>
+                </div>
+            `;
         }
 
-        async function doCreateAccount() {
+        function toggleUniAccountFields() {
+            const role = document.getElementById('uniRole').value;
+            const fields = document.getElementById('uniAccountFields');
+            fields.style.display = (role === 'customer') ? 'block' : 'none';
+        }
+
+        async function renderCreateAccount(el) {
+            el.innerHTML = getUnifiedFormHTML("Create Account", "Open a new customer bank account", "Create Account");
+            // Default to customer for "Create Account" tab
+            setTimeout(toggleUniAccountFields, 0); 
+        }
+
+        async function doUnifiedCreate() {
+            const role = document.getElementById('uniRole').value;
+            const body = {
+                full_name: document.getElementById('uniFullName').value,
+                username: document.getElementById('uniUsername').value,
+                password: document.getElementById('uniPassword').value,
+                email: document.getElementById('uniEmail').value,
+                phone: document.getElementById('uniPhone').value,
+                role: role,
+                account_type: document.getElementById('uniAccountType').value,
+                balance: parseFloat(document.getElementById('uniBalance').value || 0)
+            };
+
             try {
-                const data = await api('/api/accounts/create', {
-                    method: 'POST', body: {
-                        user_id: +document.getElementById('caUserId').value,
-                        customer_name: document.getElementById('caName').value,
-                        email: document.getElementById('caEmail').value,
-                        phone: document.getElementById('caPhone').value,
-                        account_type: document.getElementById('caType').value,
-                        balance: +document.getElementById('caBalance').value,
-                    }
+                const data = await api('/api/users/create_with_account', {
+                    method: 'POST', body: body
                 });
-                showToast(`Account #${data.account_id} created successfully!`);
-                navigate('accounts');
+                showToast(data.message || 'Created successfully!');
+                closeModal();
+                if (role === 'customer') navigate('accounts');
+                else navigate('users');
             } catch (e) { showToast(e.message, 'error'); }
         }
 
@@ -1209,35 +1229,15 @@
         function showCreateUserModal() {
             const modal = document.getElementById('modalContent');
             modal.innerHTML = `
-        <h3>Create New User</h3>
-        <div class="form-group"><label>Username</label><input type="text" id="newUsername" placeholder="username"></div>
-        <div class="form-group"><label>Password</label><input type="password" id="newPassword" placeholder="password"></div>
-        <div class="form-group"><label>Full Name</label><input type="text" id="newFullName" placeholder="Full Name"></div>
-        <div class="form-group"><label>Role</label>
-            <select id="newRole"><option value="customer">Customer</option><option value="accountant">Accountant</option><option value="manager">Manager</option></select>
-        </div>
-        <div class="modal-actions">
-            <button class="btn btn-sm btn-ghost" onclick="closeModal()">Cancel</button>
-            <button class="btn btn-sm btn-success" onclick="doCreateUser()">Create</button>
-        </div>
-    `;
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+                <div style="padding: 10px;">
+                    ${getUnifiedFormHTML("Create New User", "Add a new staff or customer member", "Create User")}
+                </div>
+            `;
+            // Remove the outer modal div since getUnifiedFormHTML adds one, or adjust
+            // Actually getUnifiedFormHTML adds a div with class "modal", which is fine inside modalContent
             document.getElementById('modalOverlay').classList.add('visible');
-        }
-
-        async function doCreateUser() {
-            try {
-                await api('/api/users/create', {
-                    method: 'POST', body: {
-                        username: document.getElementById('newUsername').value,
-                        password: document.getElementById('newPassword').value,
-                        full_name: document.getElementById('newFullName').value,
-                        role: document.getElementById('newRole').value,
-                    }
-                });
-                closeModal();
-                showToast('User created successfully!');
-                navigate('users');
-            } catch (e) { showToast(e.message, 'error'); }
+            setTimeout(toggleUniAccountFields, 0);
         }
 
         async function unlockUser(id) {
