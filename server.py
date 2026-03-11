@@ -428,7 +428,49 @@ def api_process_request(request_id):
 def api_loans():
     user = session["user"]
     if user["role"] == "customer":
-        return jsonify(db_manager.get_customer_loans(user["user_id"]))
+        import re
+        # 1. Get Loan Requests (History)
+        requests = db_manager.get_customer_loans(user["user_id"])
+        mapped_reqs = []
+        for r in requests:
+            # Try to extract tenure from details: "Loan application ... | Term: 12 months"
+            tenure = None
+            details = r.get("details", "")
+            match = re.search(r"Term:\s*(\d+)", details)
+            if match:
+                tenure = int(match.group(1))
+            
+            mapped_reqs.append({
+                "loan_id": r["request_id"],
+                "status": r["status"], # pending, approved, rejected
+                "loan_amount": r["amount"],
+                "created_at": r["created_at"],
+                "tenure_months": tenure,
+                "emi_amount": None,
+                "interest_rate": 10.5,
+                "total_paid": 0.0
+            })
+            
+        # 2. Get Active Loans (Live)
+        active_loans = []
+        accounts = db_manager.get_accounts_by_user(user["user_id"])
+        for acc in accounts:
+            l_list = db_manager.get_active_loans_by_account(acc["account_id"])
+            for l in l_list:
+                active_loans.append({
+                    "loan_id": l["loan_id"],
+                    "status": "active",
+                    "loan_amount": l["principal"],
+                    "created_at": l["created_at"],
+                    "tenure_months": l["term_months"],
+                    "emi_amount": l["next_emi_amount"],
+                    "interest_rate": l["interest_rate"],
+                    "total_paid": l["total_cost_with_interest"] - l["remaining_balance"],
+                    "remaining_balance": l["remaining_balance"]
+                })
+        
+        # Combine: Active loans first, then history
+        return jsonify(active_loans + mapped_reqs)
     elif user["role"] == "accountant":
         return jsonify(db_manager.get_pending_accountant_loans())
     elif user["role"] == "manager":
