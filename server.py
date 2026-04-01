@@ -426,8 +426,10 @@ def api_loan_pay():
     if not loan or loan["status"] != "active":
         return jsonify({"error": "Loan not found or not currently active"}), 404
         
-    remaining_balance = loan["loan_amount"] - loan["total_paid"]
-    if remaining_balance <= 0:
+    total_cost = loan["emi_amount"] * loan["tenure_months"]
+    remaining_balance = total_cost - loan["total_paid"]
+    
+    if remaining_balance <= 0.01:
         return jsonify({"error": "Loan is already fully paid off"}), 400
 
     account = db_manager.get_account_by_id(loan["account_id"])

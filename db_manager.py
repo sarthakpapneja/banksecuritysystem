@@ -794,8 +794,8 @@ def record_loan_emi_payment(loan_id: int, amount_paid: float):
     conn = get_connection("customers")
     cursor = conn.cursor()
     cursor.execute("UPDATE loans SET total_paid = total_paid + ? WHERE loan_id = ?", (amount_paid, loan_id))
-    # Check if fully paid off
-    cursor.execute("UPDATE loans SET status = 'paid' WHERE loan_id = ? AND total_paid >= loan_amount", (loan_id,))
+    # Check if fully paid off (Total + Interest - 0.1 for floating point safety)
+    cursor.execute("UPDATE loans SET status = 'paid' WHERE loan_id = ? AND total_paid >= (emi_amount * tenure_months) - 0.1", (loan_id,))
     conn.commit()
     conn.close()
 
