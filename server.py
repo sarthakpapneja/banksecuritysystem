@@ -1377,6 +1377,27 @@ def api_credit_card_pay():
     
     return jsonify({"success": True, "new_card_balance": new_card_bal, "new_account_balance": new_bal})
 
+@app.route("/api/credit_cards/charge", methods=["POST"])
+@role_required("customer")
+def api_credit_card_charge():
+    data = request.json
+    card_id = data.get("card_id")
+    amount = float(data.get("amount", 0))
+
+    if amount <= 0:
+        return jsonify({"error": "Amount must be greater than 0"}), 400
+
+    c = db_manager.get_credit_card_by_id(card_id)
+    if not c:
+        return jsonify({"error": "Credit card not found"}), 404
+        
+    if c["current_balance"] + amount > c["credit_limit"]:
+        return jsonify({"error": "Transaction declined: Limit exceeded"}), 400
+
+    new_bal = c["current_balance"] + amount
+    db_manager.update_credit_card_balance(card_id, new_bal)
+    
+    return jsonify({"success": True, "new_card_balance": new_bal})
 # ─────────────────────────────────────────────
 # AVATAR API
 # ─────────────────────────────────────────────
