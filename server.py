@@ -422,15 +422,19 @@ def api_loan_pay():
     data = request.json
     loan_id = data.get("loan_id")
     
-    loan = db_manager.get_active_loan_by_id(loan_id)
-    if not loan or loan["remaining_balance"] <= 0:
-        return jsonify({"error": "Loan not found or already paid off"}), 404
+    loan = db_manager.get_loan_by_id(loan_id)
+    if not loan or loan["status"] != "active":
+        return jsonify({"error": "Loan not found or not currently active"}), 404
+        
+    remaining_balance = loan["loan_amount"] - loan["total_paid"]
+    if remaining_balance <= 0:
+        return jsonify({"error": "Loan is already fully paid off"}), 400
 
     account = db_manager.get_account_by_id(loan["account_id"])
     if account["user_id"] != session["user"]["user_id"]:
         return jsonify({"error": "Access denied"}), 403
 
-    emi_amount = min(loan["next_emi_amount"], loan["remaining_balance"])
+    emi_amount = min(loan["emi_amount"], remaining_balance)
 
     if account["balance"] < emi_amount:
         return jsonify({"error": f"Insufficient balance in account #{account['account_id']} to pay EMI of ₹{emi_amount:,.2f}"}), 400
@@ -438,7 +442,7 @@ def api_loan_pay():
     # Deduct EMI and reduce loan balance
     db_manager.update_balance(account["account_id"], account["balance"] - emi_amount)
     db_manager.add_transaction(account["account_id"], "withdrawal", emi_amount, f"EMI Payment for Loan #{loan_id}")
-    db_manager.update_loan_balance(loan_id, loan["remaining_balance"] - emi_amount)
+    db_manager.record_loan_emi_payment(loan_id, emi_amount)
 
     return jsonify({"success": True, "message": f"Successfully paid EMI of ₹{emi_amount:,.2f}"})
 

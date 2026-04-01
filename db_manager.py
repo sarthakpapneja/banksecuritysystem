@@ -782,10 +782,20 @@ def get_active_loan_by_id(loan_id: int) -> Optional[dict]:
 
 
 def update_loan_balance(loan_id: int, new_balance: float):
-    """Update the remaining balance of an active loan."""
+    """Update the remaining balance of an active loan (legacy)."""
     conn = get_connection("customers")
     cursor = conn.cursor()
     cursor.execute("UPDATE active_loans SET remaining_balance = ? WHERE loan_id = ?", (new_balance, loan_id))
+    conn.commit()
+    conn.close()
+
+def record_loan_emi_payment(loan_id: int, amount_paid: float):
+    """Record an EMI payment incrementally onto a loan and auto-close if paid off."""
+    conn = get_connection("customers")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE loans SET total_paid = total_paid + ? WHERE loan_id = ?", (amount_paid, loan_id))
+    # Check if fully paid off
+    cursor.execute("UPDATE loans SET status = 'paid' WHERE loan_id = ? AND total_paid >= loan_amount", (loan_id,))
     conn.commit()
     conn.close()
 
