@@ -1131,24 +1131,48 @@
                 return;
             }
 
+            function formatReqDetails(r) {
+                if (r.request_type === 'user_creation') {
+                    try {
+                        const d = JSON.parse(r.details);
+                        return `<div style="line-height:1.6">
+                            <strong>${d.full_name}</strong> <span style="color:var(--text-muted)">(${d.username})</span><br>
+                            <span class="badge badge-blue" style="font-size:0.7rem">${d.role}</span>
+                            ${d.role === 'customer' ? `<span class="badge badge-green" style="font-size:0.7rem;margin-left:4px">${d.account_type}</span>
+                            <span style="font-size:0.8rem;color:var(--text-muted);margin-left:4px">Deposit: ${formatCurrency(d.balance || 0)}</span>` : ''}
+                            <br><span style="font-size:0.78rem;color:var(--text-muted)">Requested by: ${d.requested_by || 'N/A'}</span>
+                        </div>`;
+                    } catch(e) { return r.details; }
+                }
+                return r.details;
+            }
+
+            const isManager = currentUser && currentUser.role === 'manager';
+
             document.getElementById('reqTable').innerHTML = `
         <div class="table-card"><div class="table-header"><h3>Pending (${reqs.length})</h3></div>
-        <table class="data-table"><thead><tr><th>Req #</th><th>Acc #</th><th>Type</th><th>Amount</th><th>Details</th><th>Date</th><th>Actions</th></tr></thead>
-        <tbody>${reqs.map(r => `<tr>
+        <table class="data-table"><thead><tr><th>Req #</th><th>Acc #</th><th>Type</th><th>Amount</th><th>Details</th><th>Date</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>${reqs.map(r => {
+            const isUserCreation = r.request_type === 'user_creation';
+            const canApprove = isUserCreation ? isManager : true;
+            return `<tr>
             <td style="font-weight:600">#${r.request_id}</td>
-            <td>#${r.account_id}</td>
-            <td><span class="badge badge-yellow">${r.request_type.replace(/_/g, ' ')}</span></td>
-            <td class="amount-negative">${formatCurrency(r.amount)}</td>
-            <td style="font-size:0.85rem">${r.details}</td>
+            <td>${isUserCreation ? '—' : '#' + r.account_id}</td>
+            <td><span class="badge badge-${isUserCreation ? 'purple' : 'yellow'}">${r.request_type.replace(/_/g, ' ')}</span></td>
+            <td class="amount-negative">${isUserCreation ? '—' : formatCurrency(r.amount)}</td>
+            <td style="font-size:0.85rem;max-width:300px">${formatReqDetails(r)}</td>
             <td style="color:var(--text-muted);font-size:0.82rem">${r.created_at}</td>
             <td>
-                <span class="badge badge-blue" style="margin-right: 8px;">${r.status === 'pending_manager' ? 'Manager Approval' : 'Accountant Approval'}</span>
+                <span class="badge badge-${isUserCreation ? 'red' : 'blue'}" style="font-size:0.72rem">${isUserCreation ? 'Manager Only' : (r.status === 'pending_manager' ? 'Manager Approval' : 'Accountant Approval')}</span>
             </td>
             <td>
-                <button class="btn btn-sm btn-success" onclick="processReq(${r.request_id},'approve')">✓</button>
-                <button class="btn btn-sm btn-danger" onclick="processReq(${r.request_id},'reject')">✗</button>
+                ${canApprove ? `
+                    <button class="btn btn-sm btn-success" onclick="processReq(${r.request_id},'approve')">✓</button>
+                    <button class="btn btn-sm btn-danger" onclick="processReq(${r.request_id},'reject')">✗</button>
+                ` : `<span style="font-size:0.78rem;color:var(--text-muted)">Awaiting Manager</span>`}
             </td>
-        </tr>`).join('')}</tbody></table></div>
+        </tr>`;
+        }).join('')}</tbody></table></div>
     `;
         }
 
