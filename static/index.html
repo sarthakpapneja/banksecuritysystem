@@ -571,10 +571,10 @@
             }
 
             // ── DASHBOARD ANALYTICS SECTION ──
-            renderDashboardAnalytics(summary);
+            renderDashboardAnalytics(summary, currentUser.role);
         }
 
-        function renderDashboardAnalytics(summary) {
+        function renderDashboardAnalytics(summary, role) {
             const el = document.getElementById('dashboardAnalytics');
             if (!el) return;
 
@@ -582,6 +582,12 @@
             const trends = summary.monthly_trends || [];
             const recent = summary.recent_activity || [];
             const maxCat = cats.length ? Math.max(...cats.map(c => c.total)) : 1;
+
+            // Role-specific titles
+            const catTitle = role === 'customer' ? 'My Spending by Category' : role === 'manager' ? 'Organization Category Distribution' : 'Bank-Wide Category Distribution';
+            const trendTitle = role === 'customer' ? 'My Monthly Trends' : role === 'manager' ? 'Organization Cash Flow' : 'Bank Cash Flow Trends';
+            const activityTitle = role === 'customer' ? 'My Recent Activity' : 'Recent Bank Activity';
+            const scopeLabel = role === 'customer' ? 'Personal' : 'All Accounts';
 
             // Color palette for categories
             const catColors = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6'];
@@ -594,8 +600,8 @@
                     <!-- Category Breakdown -->
                     <div class="table-card" style="padding:24px">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-                            <h3 style="margin:0;font-size:1rem;font-weight:600">Spending by Category</h3>
-                            <span style="font-size:0.75rem;color:var(--text-muted)">${cats.length} categories</span>
+                            <h3 style="margin:0;font-size:1rem;font-weight:600">${catTitle}</h3>
+                            <span style="font-size:0.75rem;color:var(--text-muted)">${cats.length} categories · ${scopeLabel}</span>
                         </div>
                         ${cats.length ? cats.map((c, i) => {
                             const pct = Math.round((c.total / maxCat) * 100);
@@ -619,7 +625,7 @@
                     <!-- Monthly Trends -->
                     <div class="table-card" style="padding:24px">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-                            <h3 style="margin:0;font-size:1rem;font-weight:600">Monthly Trends</h3>
+                            <h3 style="margin:0;font-size:1rem;font-weight:600">${trendTitle}</h3>
                             <div style="display:flex;gap:12px;font-size:0.75rem">
                                 <span style="display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:#10b981"></span> Income</span>
                                 <span style="display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:#ef4444"></span> Expense</span>
@@ -647,7 +653,7 @@
                 <!-- Recent Activity Feed -->
                 ${recent.length ? `
                 <div class="table-card" style="padding:24px;margin-top:20px">
-                    <h3 style="margin:0 0 16px;font-size:1rem;font-weight:600">Recent Activity</h3>
+                    <h3 style="margin:0 0 16px;font-size:1rem;font-weight:600">${activityTitle}</h3>
                     <div style="display:flex;flex-direction:column;gap:12px">
                         ${recent.map(r => `
                         <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;background:var(--bg-card);border:1px solid var(--border-light);border-radius:10px">
