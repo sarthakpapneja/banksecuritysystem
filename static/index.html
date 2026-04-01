@@ -1131,10 +1131,17 @@
                 return;
             }
 
-                if (r.request_type === 'password_change') {
+            function formatReqDetails(r) {
+                if (r.request_type === 'user_creation') {
                     try {
                         const d = JSON.parse(r.details);
-                        return `<strong>Password change</strong> for <span style="color:var(--primary)">${d.username}</span>`;
+                        return `<div style="line-height:1.6">
+                            <strong>${d.full_name}</strong> <span style="color:var(--text-muted)">(${d.username})</span><br>
+                            <span class="badge badge-blue" style="font-size:0.7rem">${d.role}</span>
+                            ${d.role === 'customer' ? `<span class="badge badge-green" style="font-size:0.7rem;margin-left:4px">${d.account_type}</span>
+                            <span style="font-size:0.8rem;color:var(--text-muted);margin-left:4px">Deposit: ${formatCurrency(d.balance || 0)}</span>` : ''}
+                            <br><span style="font-size:0.78rem;color:var(--text-muted)">Requested by: ${d.requested_by || 'N/A'}</span>
+                        </div>`;
                     } catch(e) { return r.details; }
                 }
                 return r.details;

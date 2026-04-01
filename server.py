@@ -399,22 +399,6 @@ def api_process_request(request_id):
             db_manager.add_audit_log("USER_CREATION_APPROVED", user["username"], 0, f"Req #{request_id}: Created user '{user_data['username']}' ({user_data['role']})")
             return jsonify({"success": True, "message": f"User '{user_data['username']}' created successfully"})
 
-        elif target["request_type"] == "password_change":
-            # Parse password data from details JSON
-            import json
-            try:
-                pw_data = json.loads(target["details"])
-            except:
-                return jsonify({"error": "Invalid password change data"}), 400
-            
-            db_manager.update_user_password(pw_data["user_id"], pw_data["new_password_hash"])
-            u = db_manager.get_user_by_id(pw_data["user_id"])
-            username = u["username"] if u else "Unknown"
-            
-            db_manager.add_system_log("PASSWORD_CHANGED", user["user_id"], f"Approved password change for user '{username}' (Req #{request_id})")
-            db_manager.add_audit_log("PASSWORD_CHANGE_APPROVED", user["username"], 0, f"Req #{request_id}: Updated password for '{username}'")
-            return jsonify({"success": True, "message": f"Password updated for user '{username}'"})
-
         elif account:
             if target["request_type"] in ("large_withdrawal", "large_transfer"):
                 new_bal = account["balance"] - target["amount"]
@@ -882,20 +866,9 @@ def api_change_password():
     if len(new_password) < 4:
         return jsonify({"error": "New password must be at least 4 characters"}), 400
 
-    # Instead of direct update, create a request
-    import json
-    user_details = json.dumps({
-        "user_id": user["user_id"],
-        "username": user["username"],
-        "new_password_hash": hash_password(new_password),
-        "requested_by": user["username"]
-    })
-
-    req_id = db_manager.create_request(0, "password_change", 0, user_details, status="pending")
-    db_manager.add_audit_log("PASSWORD_CHANGE_REQUESTED", user["username"], 0, f"User requested a password change")
-    db_manager.notify_staff(f"User {user['username']} has requested a password change. Approval required.")
-
-    return jsonify({"success": True, "message": "Password change request submitted. Awaiting approval."})
+    db_manager.update_user_password(user["user_id"], hash_password(new_password))
+    db_manager.add_system_log("PASSWORD_CHANGED", user["user_id"], f"Password changed by {user['username']}")
+    return jsonify({"success": True})
 
 
 @app.route("/api/users/<int:user_id>/details")
