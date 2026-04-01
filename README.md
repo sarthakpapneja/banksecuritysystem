@@ -70,8 +70,8 @@ Rather than a single monolithic database containing highly sensitive information
 
 ```bash
 # Clone the repository
-git clone https://github.com/sarthakpapneja/banksecuritysystem.git
-cd banksecuritysystem
+git clone https://github.com/sarthakpapneja/ZenRupee.git
+cd ZenRupee
 
 # Install lightweight dependencies
 pip install -r requirements.txt
