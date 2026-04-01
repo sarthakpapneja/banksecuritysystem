@@ -1,0 +1,74 @@
+openapi: 3.0.0
+info:
+  title: ZenRupee (Aegis Nexus Bank) API
+  description: Comprehensive API documentation for the ZenRupee core banking and security platform.
+  version: 1.0.0
+servers:
+  - url: http://localhost:5005
+    description: Local Development Server
+
+paths:
+  /api/login:
+    post:
+      summary: User Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Login successful
+        '401':
+          description: Unauthorized
+
+  /api/accounts:
+    get:
+      summary: List Accounts
+      description: Returns a list of accounts assigned to the user or all accounts if staff.
+      responses:
+        '200':
+          description: A list of accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Account'
+
+  /api/deposit:
+    post:
+      summary: Process Deposit
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                account_id:
+                  type: integer
+                amount:
+                  type: number
+      responses:
+        '200':
+          description: Deposit completed
+
+components:
+  schemas:
+    Account:
+      type: object
+      properties:
+        account_id:
+          type: integer
+        customer_name:
+          type: string
+        balance:
+          type: number
+        account_type:
+          type: string
