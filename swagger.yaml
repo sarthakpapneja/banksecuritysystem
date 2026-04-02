@@ -1,15 +1,34 @@
 openapi: 3.0.0
 info:
-  title: ZenRupee API
-  description: Comprehensive API documentation for the ZenRupee core banking and security platform.
+  title: ZenRupee API (2026)
+  description: Comprehensive interactive API documentation for the ZenRupee core banking and security platform.
   version: 1.0.0
 servers:
   - url: http://localhost:5005
     description: Local Development Server
 
+tags:
+  - name: Authentication
+    description: Login, Logout, and Session Management
+  - name: Accounts
+    description: Bank account management and statements
+  - name: Transactions
+    description: Financial transfers, deposits, and receipts
+  - name: Credit Cards
+    description: Card lifecycle and payments
+  - name: Loans
+    description: Loan applications and approval workflows
+  - name: Support
+    description: Ticketing and customer assistance
+  - name: Users
+    description: Staff and customer user management
+  - name: System
+    description: Audits, branches, and alerts
+
 paths:
   /api/login:
     post:
+      tags: [Authentication]
       summary: User Login
       requestBody:
         required: true
@@ -18,57 +37,211 @@ paths:
             schema:
               type: object
               properties:
-                username:
-                  type: string
-                password:
-                  type: string
+                username: {type: string}
+                password: {type: string}
       responses:
-        '200':
-          description: Login successful
-        '401':
-          description: Unauthorized
+        '200': {description: Login successful}
+        '401': {description: Unauthorized}
 
-  /api/accounts:
-    get:
-      summary: List Accounts
-      description: Returns a list of accounts assigned to the user or all accounts if staff.
-      responses:
-        '200':
-          description: A list of accounts
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Account'
-
-  /api/deposit:
+  /api/logout:
     post:
-      summary: Process Deposit
+      tags: [Authentication]
+      summary: User Logout
+      responses:
+        '200': {description: Session invalidated}
+
+  /api/me:
+    get:
+      tags: [Authentication]
+      summary: Get Current Profile
+      responses:
+        '200': {description: Returns user details}
+
+  /api/change-password:
+    post:
+      tags: [Authentication]
+      summary: Update Password
       requestBody:
         content:
           application/json:
             schema:
               type: object
               properties:
-                account_id:
-                  type: integer
-                amount:
-                  type: number
+                old_password: {type: string}
+                new_password: {type: string}
+      responses:
+        '200': {description: Password updated}
+
+  /api/accounts:
+    get:
+      tags: [Accounts]
+      summary: List All Accounts
       responses:
         '200':
-          description: Deposit completed
+          description: A list of bank accounts
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/Account'}}
+
+  /api/accounts/{id}:
+    get:
+      tags: [Accounts]
+      summary: Get Account Details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer}
+      responses:
+        '200': {description: Account details returned}
+
+  /api/accounts/lookup/{no}:
+    get:
+      tags: [Accounts]
+      summary: Account Number Lookup
+      parameters:
+        - name: no
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200': {description: Returns masked account details}
+
+  /api/accounts/{id}/statement:
+    get:
+      tags: [Accounts]
+      summary: Generate Mini-Statement
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer}
+      responses:
+        '200': {description: Returns HTML statement}
+
+  /api/deposit:
+    post:
+      tags: [Transactions]
+      summary: Direct Deposit
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                account_id: {type: integer}
+                amount: {type: number}
+      responses:
+        '200': {description: Deposit completed}
+
+  /api/withdraw:
+    post:
+      tags: [Transactions]
+      summary: Cash Withdrawal
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                account_id: {type: integer}
+                amount: {type: number}
+      responses:
+        '200': {description: Withdrawal processed or pending approval}
+
+  /api/transfer:
+    post:
+      tags: [Transactions]
+      summary: Fund Transfer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                from_account_id: {type: integer}
+                to_account_id: {type: integer}
+                amount: {type: number}
+      responses:
+        '200': {description: Transfer successful}
+
+  /api/transactions:
+    get:
+      tags: [Transactions]
+      summary: List Transactions
+      responses:
+        '200': {description: Transaction history returned}
+
+  /api/credit_cards:
+    get:
+      tags: [Credit Cards]
+      summary: List Active Cards
+      responses:
+        '200': {description: List of credit cards}
+
+  /api/credit_cards/apply:
+    post:
+      tags: [Credit Cards]
+      summary: Apply for Credit Card
+      responses:
+        '200': {description: Application submitted}
+
+  /api/active_loans:
+    get:
+      tags: [Loans]
+      summary: Get User's Active Loans
+      responses:
+        '200': {description: List of active loans}
+
+  /api/loans/apply:
+    post:
+      tags: [Loans]
+      summary: Submit Loan Application
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount: {type: number}
+                type: {type: string}
+      responses:
+        '200': {description: Application pending review}
+
+  /api/tickets:
+    get:
+      tags: [Support]
+      summary: List Support Tickets
+      responses:
+        '200': {description: Tickets list}
+
+  /api/users:
+    get:
+      tags: [Users]
+      summary: List All Users (Staff Only)
+      responses:
+        '200': {description: User registry returned}
+
+  /api/audit-log:
+    get:
+      tags: [System]
+      summary: Get Security Audit Trail (Manager Only)
+      responses:
+        '200': {description: System audit logs}
+
+  /api/branches:
+    get:
+      tags: [System]
+      summary: List Bank Branches
+      responses:
+        '200': {description: Branch information}
 
 components:
   schemas:
     Account:
       type: object
       properties:
-        account_id:
-          type: integer
-        customer_name:
-          type: string
-        balance:
-          type: number
-        account_type:
-          type: string
+        account_id: {type: integer}
+        customer_name: {type: string}
+        balance: {type: number}
+        account_type: {type: string}

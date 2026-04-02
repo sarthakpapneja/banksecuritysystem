@@ -1,13 +1,13 @@
 {
 	"info": {
 		"_postman_id": "ZEN-RUPEE-2026",
-		"name": "ZenRupee",
-		"description": "API collection for the ZenRupee Banking platform. Includes authentication, transactions, and staff operations.",
+		"name": "ZenRupee (2026)",
+		"description": "Comprehensive API collection for the ZenRupee Banking platform. Organised by module for testing and development.",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"item": [
 		{
-			"name": "Authentication",
+			"name": "1. Authentication",
 			"item": [
 				{
 					"name": "Login",
@@ -16,117 +16,147 @@
 						"header": [],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"username\": \"manager\",\n    \"password\": \"manager123\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
+							"raw": "{\n    \"username\": \"john_doe\",\n    \"password\": \"password123\"\n}",
+							"options": {"raw": {"language": "json"}}
 						},
-						"url": {
-							"raw": "{{base_url}}/api/login",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"login"
-							]
-						}
-					},
-					"response": []
+						"url": {"raw": "{{base_url}}/api/login", "host": ["{{base_url}}"], "path": ["api", "login"]}
+					}
+				},
+				{
+					"name": "Get Profile (Me)",
+					"request": {
+						"method": "GET",
+						"url": {"raw": "{{base_url}}/api/me", "host": ["{{base_url}}"], "path": ["api", "me"]}
+					}
 				},
 				{
 					"name": "Logout",
 					"request": {
 						"method": "POST",
-						"header": [],
-						"url": {
-							"raw": "{{base_url}}/api/logout",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"logout"
-							]
-						}
-					},
-					"response": []
+						"url": {"raw": "{{base_url}}/api/logout", "host": ["{{base_url}}"], "path": ["api", "logout"]}
+					}
 				}
 			]
 		},
 		{
-			"name": "Customer Operations",
+			"name": "2. Accounts",
 			"item": [
 				{
-					"name": "List Accounts",
+					"name": "List My Accounts",
 					"request": {
 						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{base_url}}/api/accounts",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"accounts"
-							]
-						}
-					},
-					"response": []
+						"url": {"raw": "{{base_url}}/api/accounts", "host": ["{{base_url}}"], "path": ["api", "accounts"]}
+					}
 				},
 				{
-					"name": "Dashboard Summary",
+					"name": "Account Lookup",
 					"request": {
 						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{base_url}}/api/dashboard/summary",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"dashboard",
-								"summary"
-							]
-						}
-					},
-					"response": []
+						"url": {"raw": "{{base_url}}/api/accounts/lookup/1", "host": ["{{base_url}}"], "path": ["api", "accounts", "lookup", "1"]}
+					}
 				}
 			]
 		},
 		{
-			"name": "Transactions",
+			"name": "3. Transactions",
 			"item": [
 				{
 					"name": "Deposit",
 					"request": {
 						"method": "POST",
-						"header": [],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"account_id\": 1,\n    \"amount\": 1500,\n    \"category\": \"Deposit\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
+							"raw": "{\n    \"account_id\": 1,\n    \"amount\": 5000\n}",
+							"options": {"raw": {"language": "json"}}
 						},
-						"url": {
-							"raw": "{{base_url}}/api/deposit",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"deposit"
-							]
-						}
-					},
-					"response": []
+						"url": {"raw": "{{base_url}}/api/deposit", "host": ["{{base_url}}"], "path": ["api", "deposit"]}
+					}
+				},
+				{
+					"name": "Withdraw",
+					"request": {
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"account_id\": 1,\n    \"amount\": 2000\n}",
+							"options": {"raw": {"language": "json"}}
+						},
+						"url": {"raw": "{{base_url}}/api/withdraw", "host": ["{{base_url}}"], "path": ["api", "withdraw"]}
+					}
+				},
+				{
+					"name": "Transfer",
+					"request": {
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"from_account_id\": 1,\n    \"to_account_id\": 2,\n    \"amount\": 1500\n}",
+							"options": {"raw": {"language": "json"}}
+						},
+						"url": {"raw": "{{base_url}}/api/transfer", "host": ["{{base_url}}"], "path": ["api", "transfer"]}
+					}
+				}
+			]
+		},
+		{
+			"name": "4. Loans & Credit",
+			"item": [
+				{
+					"name": "List Active Loans",
+					"request": {
+						"method": "GET",
+						"url": {"raw": "{{base_url}}/api/active_loans", "host": ["{{base_url}}"], "path": ["api", "active_loans"]}
+					}
+				},
+				{
+					"name": "Apply for Loan",
+					"request": {
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"amount\": 50000,\n    \"type\": \"Personal\"\n}",
+							"options": {"raw": {"language": "json"}}
+						},
+						"url": {"raw": "{{base_url}}/api/loans/apply", "host": ["{{base_url}}"], "path": ["api", "loans", "apply"]}
+					}
+				}
+			]
+		},
+		{
+			"name": "5. Support",
+			"item": [
+				{
+					"name": "List Tickets",
+					"request": {
+						"method": "GET",
+						"url": {"raw": "{{base_url}}/api/tickets", "host": ["{{base_url}}"], "path": ["api", "tickets"]}
+					}
+				}
+			]
+		},
+		{
+			"name": "6. Management (Staff Only)",
+			"item": [
+				{
+					"name": "List All Users",
+					"request": {
+						"method": "GET",
+						"url": {"raw": "{{base_url}}/api/users", "host": ["{{base_url}}"], "path": ["api", "users"]}
+					}
+				},
+				{
+					"name": "Audit Log",
+					"request": {
+						"method": "GET",
+						"url": {"raw": "{{base_url}}/api/audit-log", "host": ["{{base_url}}"], "path": ["api", "audit-log"]}
+					}
+				},
+				{
+					"name": "System Logs",
+					"request": {
+						"method": "GET",
+						"url": {"raw": "{{base_url}}/api/system-logs", "host": ["{{base_url}}"], "path": ["api", "system-logs"]}
+					}
 				}
 			]
 		}
