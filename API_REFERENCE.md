@@ -77,10 +77,3 @@ This document provides a comprehensive list of all API endpoints available in th
 
 ---
 *Note: All endpoints require a valid session cookie. Endpoints marked with specific roles require that role in the session.*
-
-## Additional Notes
-
-- **Project Name**: ZenRupee
-- **Setup**: Requires Python 3.x and Flask. Run `python3 server.py` to start the server at `http://localhost:5005`.
-- **Testing**: Includes a `seed_data.py` script to instantly populate the environment with professional demo data across all three roles (Customer, Accountant, Manager). Use `python3 seed_data.py` to reset/initialize the database.
-- **Key Innovation**: The **User Creation Workflow** provides a secure bridge between accountant operations and manager oversight. This multi-role process ensures that all new access is formally requested by staff but requires final cryptographic and administrative approval from a manager, preventing unauthorized access while maintaining high operational efficiency.
