@@ -2,7 +2,7 @@
 
 This document provides a comprehensive list of all API endpoints available in the ZenRupee platform.
 
-## 🔑 Authentication & Session
+## Authentication & Session
 | Method | Endpoint | Role | Description |
 | :--- | :--- | :--- | :--- |
 | `POST` | `/api/login` | Public | Authenticates user; returns session cookie. |
@@ -10,7 +10,7 @@ This document provides a comprehensive list of all API endpoints available in th
 | `GET` | `/api/me` | All | Returns profile of current logged-in user. |
 | `POST` | `/api/change-password` | All | Updates user password (requires old password). |
 
-## 🏦 Account & Transaction Management
+## Account & Transaction Management
 | Method | Endpoint | Role | Description |
 | :--- | :--- | :--- | :--- |
 | `GET` | `/api/accounts` | Customer | Lists all accounts owned by current customer. |
@@ -26,7 +26,7 @@ This document provides a comprehensive list of all API endpoints available in th
 | `GET` | `/api/transactions/<id>/receipt`| All | Generates HTML Transaction Receipt. |
 | `DELETE`| `/api/transactions/<id>` | Manager | Deletes a transaction record. |
 
-## 💳 Credit Cards
+## Credit Cards
 | Method | Endpoint | Role | Description |
 | :--- | :--- | :--- | :--- |
 | `GET` | `/api/credit_cards` | All | Lists active credit cards. |
@@ -34,7 +34,7 @@ This document provides a comprehensive list of all API endpoints available in th
 | `POST` | `/api/credit_cards/pay` | Customer | Pays off credit card balance from bank account. |
 | `POST` | `/api/credit_cards/charge` | Customer | Simulate a charge on the credit card. |
 
-## 💰 Loans
+## Loans
 | Method | Endpoint | Role | Description |
 | :--- | :--- | :--- | :--- |
 | `GET` | `/api/active_loans` | Customer | Lists current active loans for user. |
@@ -44,7 +44,7 @@ This document provides a comprehensive list of all API endpoints available in th
 | `POST` | `/api/loans/<id>/approve` | Manager | Final approval and disbursement of loan funds. |
 | `POST` | `/api/loan/pay` | Customer | Pays a standard EMI for a loan. |
 
-## 🎫 Support & Tickets
+## Support & Tickets
 | Method | Endpoint | Role | Description |
 | :--- | :--- | :--- | :--- |
 | `GET` | `/api/tickets` | All | Lists support tickets (Own if Customer, All if Staff). |
@@ -53,7 +53,7 @@ This document provides a comprehensive list of all API endpoints available in th
 | `POST` | `/api/tickets/<id>/messages`| All | Adds a reply to a support ticket. |
 | `POST` | `/api/tickets/<id>/close` | Staff | Closes a resolved support ticket. |
 
-## 👥 User & Staff Management
+## User & Staff Management
 | Method | Endpoint | Role | Description |
 | :--- | :--- | :--- | :--- |
 | `GET` | `/api/users` | Staff | Lists all system users. |
@@ -64,7 +64,7 @@ This document provides a comprehensive list of all API endpoints available in th
 | `POST` | `/api/users/<id>/unlock` | Staff | Manually unlock account (after failed logins). |
 | `DELETE`| `/api/users/<id>` | Manager | Permanently deletes a user. |
 
-## 📍 Meta & System
+## Meta & System
 | Method | Endpoint | Role | Description |
 | :--- | :--- | :--- | :--- |
 | `GET` | `/api/dashboard/summary` | All | Returns aggregate stats for dashboard UI. |
