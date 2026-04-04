@@ -2021,7 +2021,11 @@
                 });
                 showToast('Beneficiary added!');
                 closeModal();
-                renderQuickPay(document.getElementById('contentArea'));
+                if (document.getElementById('beneficiariesContent')) {
+                    renderBeneficiaries(document.getElementById('contentArea'));
+                } else {
+                    renderQuickPay(document.getElementById('contentArea'));
+                }
             } catch (e) { showToast(e.message, 'error'); }
         }
 
@@ -2031,7 +2035,11 @@
             try {
                 await api(`/api/beneficiaries/${id}`, { method: 'DELETE' });
                 showToast('Beneficiary removed');
-                renderQuickPay(document.getElementById('contentArea'));
+                if (document.getElementById('beneficiariesContent')) {
+                    renderBeneficiaries(document.getElementById('contentArea'));
+                } else {
+                    renderQuickPay(document.getElementById('contentArea'));
+                }
             } catch (e) { showToast(e.message, 'error'); }
         }
 
@@ -2475,7 +2483,7 @@
             const ben = await api('/api/beneficiaries');
 
             let html = `
-                <button class="btn btn-success" onclick="showAddBeneficiaryModal()" style="margin-bottom:16px">+ Add Beneficiary</button>
+                <button class="btn btn-success" onclick="openAddBeneficiary()" style="margin-bottom:16px">+ Add Beneficiary</button>
                 <div class="table-card" style="margin-top:10px">
                     <div class="table-header"><h3>Your Saved Payees (${ben.length})</h3></div>
             `;
@@ -2496,33 +2504,6 @@
             html += `</div>`;
             
             document.getElementById('beneficiariesContent').innerHTML = html;
-        }
-
-        function showAddBeneficiaryModal() {
-            openAddBeneficiary();
-        }
-
-        async function doAddBeneficiary() {
-            try {
-                await api('/api/beneficiaries', {
-                    method: 'POST', body: {
-                        account_id: +document.getElementById('benAccId').value,
-                        name: document.getElementById('benName').value,
-                    }
-                });
-                closeModal();
-                showToast('Beneficiary added successfully!');
-                navigate('beneficiaries');
-            } catch (e) { showToast(e.message, 'error'); }
-        }
-
-        async function deleteBeneficiary(id, name) {
-            if (!confirm(`Remove "${name}" from your beneficiaries?`)) return;
-            try {
-                await api(`/api/beneficiaries/${id}`, { method: 'DELETE' });
-                showToast('Beneficiary removed');
-                navigate('beneficiaries');
-            } catch (e) { showToast(e.message, 'error'); }
         }
 
         // ── SUPPORT TICKETS ──
