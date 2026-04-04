@@ -1369,7 +1369,7 @@ def api_account_qr(account_id):
             return jsonify({"success": False, "message": "Unauthorized"}), 403
         data = request.json
         qr_data = data.get("qr_code") # Expecting base64 string
-        if not qr_data:
+        if qr_data is None:
             return jsonify({"success": False, "message": "No QR data provided"}), 400
         db_manager.update_account_qr(account_id, qr_data)
         return jsonify({"success": True})
