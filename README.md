@@ -18,13 +18,9 @@ Built with Python · Flask · SQLite
 
 ## Overview
 
-ZenRupee is a robust **Finance Data Processing and Access Control Platform** designed to securely handle banking records, execute complex access constraints based on user roles, and generate real-time financial analytics. 
+ZenRupee is a robust **Finance Data Processing and Access Control Platform** designed to securely handle banking records, execute complex access constraints based on user roles, and generate real-time financial analytics. A lightweight static frontend is included for demo purposes; however, the backend APIs remain fully functional independently.
 
-It satisfies rigorous backend engineering standards by enforcing rigid data segregation, providing comprehensive financial record CRUD capabilities, supporting multi-layered Role-Based Access Control (RBAC), and resolving structural operations safely using lightweight SQL transactions.
-
-**Role Mapping Note:** Customer maps to Viewer, Accountant maps to Analyst, Manager maps to Admin.
-
-**Frontend Note:** A lightweight static frontend is included for demo purposes; the backend APIs are fully functional independently.
+It satisfies rigorous backend engineering standards by enforcing rigid data segregation, providing comprehensive financial record CRUD capabilities, supporting multi-layered Role-Based Access Control (RBAC), and resolving structural operations safely using lightweight SQL transactions. Within this system, standard assignment-level roles map directly into the domain logic: Customer maps to Viewer, Accountant maps to Analyst, and Manager maps to Admin.
 
 ---
 
