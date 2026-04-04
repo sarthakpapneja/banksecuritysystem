@@ -1,67 +1,23 @@
-import db_manager
-import auth
+import pytest
+from server import app
 
-print("Testing Backend Features")
+@pytest.fixture
+def client():
+    app.config["TESTING"] = True
+    with app.test_client() as client:
+        yield client
 
-# 1. Login Authentication
-print("\n--- Testing Login ---")
-user = db_manager.get_user_by_username("john_doe")
-print(f"User retrieved: {user['username']}")
+def test_login_wrong_password(client):
+    res = client.post("/api/login", json={"username": "john_doe", "password": "wrong"})
+    assert res.status_code == 401
 
-# 2. QR Code functionality (Generate QR code string)
-print("\n--- Testing QR Code ---")
-acc = db_manager.get_accounts_by_user(user['user_id'])[0]
-qr_data = f"upi://pay?pa={acc['account_id']}@apex&pn={user['full_name']}"
-print(f"QR Data generated: {qr_data}")
+def test_dashboard_requires_auth(client):
+    res = client.get("/api/dashboard/summary")
+    assert res.status_code == 401
 
-# 3. Requesting a Loan
-print("\n--- Testing Loan Application ---")
-# Simulate adding a loan request
-loan_amount = 5000.00
-try:
-    req_id = db_manager.create_request(acc["account_id"], "loan", loan_amount, "Home improvement loan")
-    print(f"Loan request created successfully. Request ID: {req_id}")
+def test_customer_cannot_delete_transaction(client):
+    res_login = client.post("/api/login", json={"username": "john_doe", "password": "password123"})
+    assert res_login.status_code == 200
     
-    # Clean up right after
-    conn = db_manager.get_connection("accountants")
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM pending_requests WHERE request_id = ?", (req_id,))
-    conn.commit()
-    conn.close()
-    print("Test loan request cleaned up.")
-except Exception as e:
-    print(f"Failed to create loan request: {e}")
-
-# 4. Two Step Verification Status
-print("\n--- Testing 2FA Configuration ---")
-if 'two_factor_enabled' in user:
-    print(f"2FA Enabled: {user['two_factor_enabled']}")
-else:
-    print("2FA status column not explicitly returned in get_user_by_username, but table might have it.")
-
-print("\n--- Testing Distinct Account Number Generation ---")
-try:
-    new_acc_id = db_manager.create_account("Test User", "test@test.com", "1234567890", 1000.0, "checking", user["user_id"])
-    print(f"Generated Random Account ID: {new_acc_id}")
-    if new_acc_id > 10000000:
-        print("Success: Account ID generated is distinctly large.")
-    else:
-        print("Failed: Account ID not generated properly.")
-    
-    # Cleanup
-    conn = db_manager.get_connection("customers")
-    conn.execute("DELETE FROM accounts WHERE account_id = ?", (new_acc_id,))
-    conn.commit()
-    conn.close()
-    print("Test account cleaned up.")
-except Exception as e:
-    print(f"Failed account generation test: {e}")
-
-print("\n--- Testing Notifications ---")
-try:
-    db_manager.notify_staff("Test notification for staff", ["accountant", "manager"])
-    print("Staff notification test successfully invoked without errors.")
-except Exception as e:
-    print(f"Failed to notify staff: {e}")
-
-print("\nBackend testing completed.")
+    res = client.delete("/api/transactions/1")
+    assert res.status_code == 403
